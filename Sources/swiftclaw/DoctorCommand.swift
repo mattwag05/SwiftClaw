@@ -10,7 +10,7 @@ struct DoctorCommand: AsyncParsableCommand {
     )
 
     @Option(name: .long, help: "Model ID to check for.")
-    var model: String = "mlx-community/Qwen3.5-9B-MLX-4bit"
+    var model: String = SwiftClawVersion.defaultModelId
 
     mutating func run() async throws {
         print("SwiftClaw Doctor")

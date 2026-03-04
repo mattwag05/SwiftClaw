@@ -17,6 +17,19 @@ public struct ProcessListTool: SwiftClawTool {
 
     private struct Arguments: Decodable {
         var limit: Int?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            if let i = try? c.decodeIfPresent(Int.self, forKey: .limit) {
+                limit = i
+            } else if let s = try? c.decodeIfPresent(String.self, forKey: .limit) {
+                limit = Int(s)
+            } else {
+                limit = nil
+            }
+        }
+
+        enum CodingKeys: String, CodingKey { case limit }
     }
 
     public func execute(arguments: String) async throws -> ToolResult {

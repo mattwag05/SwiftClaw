@@ -44,6 +44,8 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
         let chatMessages = MLXToolBridge.toChatMessages(messages)
         let toolSpecs: [ToolSpec]? = tools.isEmpty ? nil : tools.map { MLXToolBridge.toToolSpec($0) }
         let maxTokens = config.maxTokens
+        let temperature = config.temperature
+        let topP = config.topP
 
         Task { @Sendable in
             do {
@@ -52,6 +54,8 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
                     chatMessages: chatMessages,
                     toolSpecs: toolSpecs,
                     maxTokens: maxTokens,
+                    temperature: temperature,
+                    topP: topP,
                     continuation: continuation
                 )
             } catch {
@@ -67,6 +71,8 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
         chatMessages: [Chat.Message],
         toolSpecs: [ToolSpec]?,
         maxTokens: Int,
+        temperature: Float,
+        topP: Float?,
         continuation: AsyncThrowingStream<StreamChunk, Error>.Continuation
     ) async throws {
         let userInput = UserInput(
@@ -78,6 +84,8 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
 
         var generateParams = GenerateParameters()
         generateParams.maxTokens = maxTokens
+        generateParams.temperature = temperature
+        if let topP { generateParams.topP = topP }
 
         let generationStream = try await modelContainer.generate(
             input: lmInput,

@@ -24,6 +24,20 @@ public struct ShellTool: SwiftClawTool {
     private struct Arguments: Decodable {
         var command: String
         var timeout: Int?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            command = try c.decode(String.self, forKey: .command)
+            if let i = try? c.decodeIfPresent(Int.self, forKey: .timeout) {
+                timeout = i
+            } else if let s = try? c.decodeIfPresent(String.self, forKey: .timeout) {
+                timeout = Int(s)
+            } else {
+                timeout = nil
+            }
+        }
+
+        enum CodingKeys: String, CodingKey { case command, timeout }
     }
 
     public func execute(arguments: String) async throws -> ToolResult {
@@ -82,6 +96,22 @@ public struct ShellTool: SwiftClawTool {
                 execute: timeoutItem
             )
 
+            let group = DispatchGroup()
+            nonisolated(unsafe) var stdoutData = Data()
+            nonisolated(unsafe) var stderrData = Data()
+
+            group.enter()
+            DispatchQueue.global().async {
+                stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+            group.enter()
+            DispatchQueue.global().async {
+                stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+
+            group.wait()
             process.waitUntilExit()
             timeoutItem.cancel()
 
@@ -90,15 +120,11 @@ public struct ShellTool: SwiftClawTool {
                 return
             }
 
-            let stdout = String(
-                data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let stdout = String(data: stdoutData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-            let stderr = String(
-                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let stderr = String(data: stderrData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
             guard process.terminationStatus == 0 else {
                 let detail = stderr.isEmpty ? "exit code \(process.terminationStatus)" : stderr

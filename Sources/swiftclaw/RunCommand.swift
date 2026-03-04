@@ -11,7 +11,7 @@ struct RunCommand: AsyncParsableCommand {
     )
 
     @Option(name: .long, help: "Model ID (Hugging Face).")
-    var model: String = "mlx-community/Qwen3.5-9B-MLX-4bit"
+    var model: String = SwiftClawVersion.defaultModelId
 
     @Option(name: .long, help: "Maximum tokens per response.")
     var maxTokens: Int = 4096

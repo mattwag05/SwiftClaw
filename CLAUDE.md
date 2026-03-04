@@ -6,9 +6,10 @@ macOS-first, Swift-native AI agent framework with MLX inference. Privacy-first, 
 
 ```bash
 swift build                        # Build all targets
-swift run swiftclaw doctor         # Check system, MLX, model
+swift build -c release             # Required for MLX (debug build can't load metallib)
+swift run swiftclaw doctor         # Check system, MLX, model (pre-model checks only)
 swift run swiftclaw tools          # List available tools
-swift run swiftclaw run            # Interactive Sysop Agent
+.build/release/swiftclaw run       # Run agent (requires mlx.metallib colocated — see Gotchas)
 swift test                         # Run all tests
 ```
 
@@ -44,3 +45,9 @@ swift test                         # Run all tests
 - **`GenerateStopReason` has no `.toolCall`** — detect tool calls via `!collectedToolCalls.isEmpty`, not stop reason
 - **ShellSandbox redirect pattern** — use `">"` not `">{"`; plain `>` catches all redirect forms
 - **Use `ModelContainer` directly** — don't use `ChatSession`; SwiftClaw's `Session` actor owns the agentic loop
+- **MLX requires release binary + colocated metallib** — `swift run` / debug builds fail with "Failed to load the default metallib". Must: (1) `swift build -c release`, (2) `cp <mlx.metallib> .build/release/`. Get metallib via `pip install --target /tmp/mlx-metallib mlx==<version>` where version matches `mlx-swift` in Package.resolved.
+- **Model cache is `~/Library/Caches/models/`** — NOT `~/.cache/huggingface/hub/`. The doctor command's cache check points to the wrong path.
+- **Qwen3.5 tool call format** — uses a custom `xmlFunctionTagged` format (not upstream mlx-swift-lm). Patch lives in `.build/checkouts/mlx-swift-lm/Libraries/MLXLMCommon/Tool/Parsers/XMLFunctionTaggedParser.swift`. Package.swift pins to commit `3a7f2b18` which added Qwen3.5 model support; the tool call format patch is our local addition to that checkout.
+- **`swift package update` wipes checkout patches** — editing files in `.build/checkouts/` is safe only while the revision is pinned. Document all local patches here and re-apply after any package update.
+- **Tool Arguments: accept string-encoded integers** — the Qwen3.5 XML parser passes all parameter values as strings. Tool `Arguments` structs with `Int?` fields need a custom `Decodable` that accepts both `Int` and numeric `String`. See `ProcessListTool` and `ShellTool` for the pattern.
+- **Qwen3.5 `<think>` blocks stream as text** — reasoning tokens appear inline in output. Not filtered yet. Deferred to future UX pass.
