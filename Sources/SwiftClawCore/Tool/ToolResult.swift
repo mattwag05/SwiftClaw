@@ -1,5 +1,5 @@
 /// Result of a tool execution, fed back to the LLM.
-public struct ToolResult: Sendable {
+public struct ToolResult: Sendable, Codable {
     public let content: String
     public let isError: Bool
 

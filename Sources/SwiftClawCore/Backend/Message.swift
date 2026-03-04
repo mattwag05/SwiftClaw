@@ -20,7 +20,7 @@ public struct ToolCallRequest: Sendable, Codable, Equatable {
     }
 }
 
-public struct Message: Sendable {
+public struct Message: Sendable, Codable {
     public let role: MessageRole
     public let content: String
     public let toolCalls: [ToolCallRequest]?

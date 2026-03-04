@@ -7,6 +7,6 @@ struct SwiftClawCLI: AsyncParsableCommand {
         commandName: "swiftclaw",
         abstract: SwiftClawVersion.tagline,
         version: "swiftclaw \(SwiftClawVersion.version)",
-        subcommands: [RunCommand.self, ToolsCommand.self, DoctorCommand.self]
+        subcommands: [RunCommand.self, ToolsCommand.self, DoctorCommand.self, SessionsCommand.self]
     )
 }

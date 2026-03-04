@@ -4,7 +4,7 @@ public struct StreamChunk: Sendable {
     public let toolCalls: [ToolCallRequest]?
     public let finishReason: FinishReason?
 
-    public enum FinishReason: String, Sendable {
+    public enum FinishReason: String, Sendable, Codable {
         case stop
         case toolCall = "tool_calls"
         case length

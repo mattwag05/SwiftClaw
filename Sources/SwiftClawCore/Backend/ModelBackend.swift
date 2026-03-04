@@ -27,6 +27,20 @@ extension ModelBackend {
             if let fr = chunk.finishReason { finishReason = fr }
         }
 
+        // Strip reasoning blocks emitted by Qwen3.5.
+        // The model streams thinking content then closes with </think> (opening tag may be implicit).
+        if let thinkEnd = text.range(of: "</think>") {
+            text = String(text[thinkEnd.upperBound...])
+        } else if text.contains("<think>") {
+            // Unclosed <think>: model stopped mid-thought — drop everything from <think> onward
+            text = text.replacingOccurrences(
+                of: "<think>[\\s\\S]*$",
+                with: "",
+                options: .regularExpression
+            )
+        }
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
         return GenerationResponse(
             content: text,
             toolCalls: toolCalls,

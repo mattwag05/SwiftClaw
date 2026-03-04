@@ -7,6 +7,10 @@ public enum SwiftClawError: LocalizedError {
     case toolExecutionFailed(toolName: String, detail: String)
     case invalidToolArguments(toolName: String, detail: String)
     case sessionClosed
+    case httpRequestFailed(statusCode: Int, body: String)
+    case sseParsingFailed(String)
+    case sessionNotFound(String)
+    case storageError(String)
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +26,14 @@ public enum SwiftClawError: LocalizedError {
             "Invalid arguments for '\(name)': \(detail)"
         case .sessionClosed:
             "Session is closed"
+        case let .httpRequestFailed(code, body):
+            "HTTP request failed (\(code)): \(body)"
+        case let .sseParsingFailed(detail):
+            "SSE parsing failed: \(detail)"
+        case let .sessionNotFound(id):
+            "Session not found: \(id)"
+        case let .storageError(detail):
+            "Storage error: \(detail)"
         }
     }
 }

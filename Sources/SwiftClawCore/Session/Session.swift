@@ -1,3 +1,5 @@
+import Foundation
+
 /// The agentic loop: manages conversation state and orchestrates
 /// LLM generation → tool execution → result feedback cycles.
 ///
@@ -8,18 +10,46 @@ public actor Session {
     private let agent: Agent
     private let backend: any ModelBackend
     private let config: SessionConfiguration
+    public let sessionId: String?
 
+    /// Create a new session with a fresh conversation history.
     public init(
         agent: Agent,
         backend: any ModelBackend,
-        config: SessionConfiguration = SessionConfiguration()
+        config: SessionConfiguration = SessionConfiguration(),
+        sessionId: String? = nil
     ) {
         self.agent = agent
         self.backend = backend
         self.config = config
+        self.sessionId = sessionId
         self.messages = [
             Message(role: .system, content: agent.configuration.systemPrompt)
         ]
+    }
+
+    /// Restore a session from previously saved messages.
+    /// The saved messages are used as-is (including any system message they contain).
+    public init(
+        agent: Agent,
+        backend: any ModelBackend,
+        config: SessionConfiguration = SessionConfiguration(),
+        sessionId: String,
+        restoredMessages: [Message]
+    ) {
+        self.agent = agent
+        self.backend = backend
+        self.config = config
+        self.sessionId = sessionId
+        self.messages = restoredMessages
+    }
+
+    /// Save the current conversation to a store.
+    public func save(to store: any SessionStore, metadata: SessionMetadata) async throws {
+        guard let id = sessionId else { return }
+        var meta = metadata
+        meta.updatedAt = Date()
+        try await store.save(sessionId: id, messages: messages, metadata: meta)
     }
 
     /// Run the agentic loop for a user prompt, emitting events as they occur.

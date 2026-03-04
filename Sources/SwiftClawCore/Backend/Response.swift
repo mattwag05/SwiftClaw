@@ -1,5 +1,5 @@
 /// Complete response from a non-streaming LLM generation.
-public struct GenerationResponse: Sendable {
+public struct GenerationResponse: Sendable, Codable {
     public let content: String
     public let toolCalls: [ToolCallRequest]
     public let finishReason: StreamChunk.FinishReason
@@ -16,7 +16,7 @@ public struct GenerationResponse: Sendable {
 }
 
 /// Configuration for text generation.
-public struct GenerationConfig: Sendable {
+public struct GenerationConfig: Sendable, Codable {
     public var temperature: Float
     public var maxTokens: Int
     public var topP: Float?

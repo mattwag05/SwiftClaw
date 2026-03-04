@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import SwiftClawCore
+import SwiftClawHTTP
 import SwiftClawMLX
 import SwiftClawTools
 
@@ -10,8 +11,21 @@ struct RunCommand: AsyncParsableCommand {
         abstract: "Start an interactive Sysop Agent session."
     )
 
-    @Option(name: .long, help: "Model ID (Hugging Face).")
+    enum BackendChoice: String, ExpressibleByArgument {
+        case mlx, http
+    }
+
+    @Option(name: .long, help: "Backend: mlx (on-device) or http (OpenAI-compatible API).")
+    var backend: BackendChoice = .mlx
+
+    @Option(name: .long, help: "Model ID (Hugging Face for MLX, or model name for HTTP).")
     var model: String = SwiftClawVersion.defaultModelId
+
+    @Option(name: .long, help: "Base URL for HTTP backend (e.g. http://localhost:11434/v1).")
+    var apiUrl: String = "http://localhost:11434/v1"
+
+    @Option(name: .long, help: "API key for HTTP backend (optional).")
+    var apiKey: String?
 
     @Option(name: .long, help: "Maximum tokens per response.")
     var maxTokens: Int = 4096
@@ -19,18 +33,32 @@ struct RunCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Maximum tool round-trips per turn.")
     var maxRoundTrips: Int = 10
 
+    @Option(name: .long, help: "Session ID to create or resume.")
+    var session: String?
+
     mutating func run() async throws {
         print("SwiftClaw \(SwiftClawVersion.version)")
-        print("Loading model: \(model)...")
 
-        let backend = try await loadMLXBackend(modelId: model) { progress in
-            let pct = Int(progress * 100)
-            if pct % 10 == 0 {
-                print("  Download: \(pct)%", terminator: "\r")
-                fflush(stdout)
+        let resolvedBackend: any ModelBackend
+        switch backend {
+        case .mlx:
+            print("Loading model: \(model)...")
+            resolvedBackend = try await loadMLXBackend(modelId: model) { progress in
+                let pct = Int(progress * 100)
+                if pct % 10 == 0 {
+                    print("  Download: \(pct)%", terminator: "\r")
+                    fflush(stdout)
+                }
             }
+            print("Model loaded.\n")
+        case .http:
+            guard let url = URL(string: apiUrl) else {
+                throw ValidationError("Invalid API URL: \(apiUrl)")
+            }
+            let httpModel = model == SwiftClawVersion.defaultModelId ? "qwen2.5:7b" : model
+            resolvedBackend = HTTPBackend(baseURL: url, model: httpModel, apiKey: apiKey)
+            print("Using HTTP backend: \(apiUrl) (model: \(httpModel))\n")
         }
-        print("Model loaded.\n")
 
         let tools: [any SwiftClawTool] = [
             SystemInfoTool(),
@@ -39,7 +67,7 @@ struct RunCommand: AsyncParsableCommand {
             ShellTool(),
         ]
 
-        let agent = Agent(configuration: AgentConfiguration(
+        let agentConfig = AgentConfiguration(
             name: "SysopAgent",
             systemPrompt: """
                 You are Sysop, a macOS system administration assistant. You have access to tools \
@@ -50,13 +78,47 @@ struct RunCommand: AsyncParsableCommand {
             tools: tools,
             modelId: model,
             generationConfig: GenerationConfig(maxTokens: maxTokens)
-        ))
-
-        let session = Session(
-            agent: agent,
-            backend: backend,
-            config: SessionConfiguration(maxToolRoundTrips: maxRoundTrips)
         )
+        let agent = Agent(configuration: agentConfig)
+
+        // Resolve session ID and optionally restore from saved state
+        let sessionId = session ?? UUID().uuidString
+        let store = try FileSessionStore()
+        let agentSession: Session
+
+        let sessionConfig = SessionConfiguration(maxToolRoundTrips: maxRoundTrips)
+        if session != nil {
+            do {
+                let restored = try await store.load(sessionId: sessionId)
+                agentSession = Session(
+                    agent: agent,
+                    backend: resolvedBackend,
+                    config: sessionConfig,
+                    sessionId: sessionId,
+                    restoredMessages: restored.messages
+                )
+                let count = restored.messages.filter { $0.role == .user }.count
+                print("Resumed session '\(sessionId)' (\(count) prior turns).\n")
+            } catch SwiftClawError.sessionNotFound {
+                agentSession = Session(
+                    agent: agent,
+                    backend: resolvedBackend,
+                    config: sessionConfig,
+                    sessionId: sessionId
+                )
+                print("Started new session '\(sessionId)'.\n")
+            }
+            // Other errors (storage corruption, permissions) propagate and abort
+        } else {
+            agentSession = Session(
+                agent: agent,
+                backend: resolvedBackend,
+                config: sessionConfig,
+                sessionId: sessionId
+            )
+        }
+
+        let metadata = SessionMetadata(agentName: agentConfig.name, modelId: model)
 
         print("Sysop Agent ready. Type your message (Ctrl+D to exit).\n")
 
@@ -77,7 +139,7 @@ struct RunCommand: AsyncParsableCommand {
             }
 
             do {
-                let events = await session.respond(to: trimmed)
+                let events = await agentSession.respond(to: trimmed)
                 for try await event in events {
                     switch event {
                     case let .textDelta(text):
@@ -100,6 +162,8 @@ struct RunCommand: AsyncParsableCommand {
                         print()
                     }
                 }
+                // Auto-save after each complete turn
+                try await agentSession.save(to: store, metadata: metadata)
             } catch {
                 print("\nError: \(error.localizedDescription)")
             }

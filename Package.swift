@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "SwiftClawCore", targets: ["SwiftClawCore"]),
         .library(name: "SwiftClawMLX", targets: ["SwiftClawMLX"]),
+        .library(name: "SwiftClawHTTP", targets: ["SwiftClawHTTP"]),
         .library(name: "SwiftClawTools", targets: ["SwiftClawTools"]),
         .executable(name: "swiftclaw", targets: ["swiftclaw"]),
     ],
@@ -16,6 +17,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "SwiftClawCore"),
+        .target(name: "SwiftClawHTTP", dependencies: ["SwiftClawCore"]),
         .target(name: "SwiftClawMLX", dependencies: [
             "SwiftClawCore",
             .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
@@ -23,10 +25,11 @@ let package = Package(
         ]),
         .target(name: "SwiftClawTools", dependencies: ["SwiftClawCore"]),
         .executableTarget(name: "swiftclaw", dependencies: [
-            "SwiftClawCore", "SwiftClawMLX", "SwiftClawTools",
+            "SwiftClawCore", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools",
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
         ]),
         .testTarget(name: "SwiftClawCoreTests", dependencies: ["SwiftClawCore"]),
+        .testTarget(name: "SwiftClawHTTPTests", dependencies: ["SwiftClawHTTP"]),
         .testTarget(name: "SwiftClawToolsTests", dependencies: ["SwiftClawTools"]),
         .testTarget(name: "SwiftClawMLXTests", dependencies: ["SwiftClawMLX"]),
     ]

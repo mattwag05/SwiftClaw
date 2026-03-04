@@ -41,7 +41,7 @@ struct DoctorCommand: AsyncParsableCommand {
         // Check for cached model
         print("\n[Model]")
         print("Default model: \(model)")
-        let cachePath = NSHomeDirectory() + "/.cache/huggingface/hub/models--" + model.replacingOccurrences(of: "/", with: "--")
+        let cachePath = NSHomeDirectory() + "/Library/Caches/models/" + model
         if FileManager.default.fileExists(atPath: cachePath) {
             print("Status: cached locally at \(cachePath)")
         } else {
