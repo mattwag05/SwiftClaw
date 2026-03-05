@@ -15,7 +15,7 @@ swift run swiftclaw tools          # List available tools
 .build/release/swiftclaw sessions list             # List saved sessions
 .build/release/swiftclaw sessions show <id>        # Print conversation history
 .build/release/swiftclaw sessions delete <id>      # Delete a session
-swift test                         # Run all tests (62 tests)
+swift test                         # Run all tests (117 tests)
 ```
 
 ## Architecture
@@ -23,7 +23,8 @@ swift test                         # Run all tests (62 tests)
 - **SwiftClawCore**: Agent runtime, session orchestration, tool protocol, model backend protocol, session store protocol, agent memory
 - **SwiftClawMLX**: Concrete MLX backend using mlx-swift-lm (native, no Python)
 - **SwiftClawHTTP**: OpenAI-compatible HTTP backend (Foundation-only, targets Ollama/OpenAI)
-- **SwiftClawTools**: Built-in tools (system info, disk, processes, sandboxed shell)
+- **SwiftClawTools**: Built-in tools (system info, disk, processes, shell, file ops, env/datetime/clipboard); `SwiftClawToolFactory.allTools(config:)` for registration
+- **SwiftClawPippin**: Pippin CLI wrappers (mail + memos); `PippinToolFactory.allTools()` returns empty if binary absent
 - **swiftclaw**: CLI executable (ArgumentParser)
 
 ## Key Design Decisions
@@ -32,7 +33,7 @@ swift test                         # Run all tests (62 tests)
 - Session is an actor (mutable conversation state), Agent is a struct (immutable config)
 - Tool arguments are JSON strings (not `Any`) for Sendable safety
 - ModelBackend protocol: MLX (on-device) and HTTP (OpenAI-compatible) backends
-- Sessions persist to `~/.swiftclaw/sessions/<id>.json`; agent memory at `~/.swiftclaw/memory/<namespace>.json`
+- Sessions persist to `~/.swiftclaw/sessions/<id>.json`; agent memory at `~/.swiftclaw/memory/<namespace>.json`; config at `~/.swiftclaw/config.json` (`SwiftClawConfig` — controls `FileSandbox` allowedPaths)
 - Default model: `mlx-community/Qwen3.5-9B-MLX-4bit` (MLX); `qwen2.5:7b` (HTTP default)
 - HTTP backend targets Ollama at `http://localhost:11434/v1` by default
 
@@ -61,3 +62,5 @@ swift test                         # Run all tests (62 tests)
 - **`swift package reset` xattr block** — macOS may set `com.apple.provenance` on `.build`, blocking `swift package reset`. Fix: `xattr -d com.apple.provenance .build` then retry.
 - **`.build/checkouts/` invisible to `ls`** — macOS privacy layer hides it. Use `find .build/checkouts -name "*.swift"` or `swift package show-dependencies` instead.
 - **`JSONSerialization` escapes `/`** — use `.withoutEscapingSlashes` option when the JSON string will be inspected or tested: `JSONSerialization.data(withJSONObject: obj, options: .withoutEscapingSlashes)`.
+- **`DirectoryEnumerator` in async** — `for case let item as String in enumerator` is a Swift 6 error ("makeIterator unavailable from asynchronous contexts"). Use `enumerator.allObjects.compactMap { $0 as? String }` instead.
+- **`TimeZone(identifier: "UTC").identifier` returns `"GMT"`** on macOS — tests checking for the literal string "UTC" will fail; accept either "UTC" or "GMT".
