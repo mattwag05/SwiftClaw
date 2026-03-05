@@ -5,3 +5,7 @@
 xcuserdata/
 DerivedData/
 Package.resolved
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
