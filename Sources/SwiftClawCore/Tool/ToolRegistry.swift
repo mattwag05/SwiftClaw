@@ -7,7 +7,7 @@ public struct ToolRegistry: Sendable {
     }
 
     public var definitions: [ToolDefinition] {
-        tools.values.map(\.definition)
+        tools.values.map(\.definition).sorted { $0.name < $1.name }
     }
 
     public var toolNames: [String] {
@@ -22,6 +22,10 @@ public struct ToolRegistry: Sendable {
         guard let tool = tools[name] else {
             return .failure("Unknown tool: \(name)")
         }
-        return try await tool.execute(arguments: arguments)
+        do {
+            return try await tool.execute(arguments: arguments)
+        } catch {
+            return .failure(SwiftClawError.toolExecutionFailed(toolName: name, detail: error.localizedDescription).errorDescription ?? error.localizedDescription)
+        }
     }
 }

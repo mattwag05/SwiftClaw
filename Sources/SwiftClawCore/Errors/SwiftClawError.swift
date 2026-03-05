@@ -5,7 +5,6 @@ public enum SwiftClawError: LocalizedError {
     case generationFailed(String)
     case maxToolRoundTripsExceeded(Int)
     case toolExecutionFailed(toolName: String, detail: String)
-    case invalidToolArguments(toolName: String, detail: String)
     case sessionClosed
     case httpRequestFailed(statusCode: Int, body: String)
     case sseParsingFailed(String)
@@ -22,8 +21,6 @@ public enum SwiftClawError: LocalizedError {
             "Exceeded maximum tool round-trips (\(n))"
         case let .toolExecutionFailed(name, detail):
             "Tool '\(name)' failed: \(detail)"
-        case let .invalidToolArguments(name, detail):
-            "Invalid arguments for '\(name)': \(detail)"
         case .sessionClosed:
             "Session is closed"
         case let .httpRequestFailed(code, body):

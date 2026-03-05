@@ -53,7 +53,7 @@ public struct WriteFileTool: SwiftClawTool {
         let tempURL = dir.appendingPathComponent(".\(url.lastPathComponent).swiftclaw-tmp")
         do {
             try data.write(to: tempURL, options: .atomic)
-            _ = try? FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
         } catch {
             try? FileManager.default.removeItem(at: tempURL)
             return .failure("Write failed: \(error.localizedDescription)")

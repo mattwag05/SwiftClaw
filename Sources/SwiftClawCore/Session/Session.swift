@@ -90,6 +90,14 @@ public actor Session {
     ) async throws {
         messages.append(Message(role: .user, content: prompt))
 
+        // Trim oldest non-system messages if we've exceeded the history limit
+        if messages.count > config.maxTotalMessages {
+            let systemMessages = messages.prefix(1)
+            let rest = messages.dropFirst()
+            let keepCount = max(1, config.maxTotalMessages - 1)
+            messages = Array(systemMessages) + Array(rest.suffix(keepCount))
+        }
+
         for _ in 0..<config.maxToolRoundTrips {
             let response = try await backend.generate(
                 messages: messages,

@@ -1,7 +1,5 @@
 /// Events emitted by a session during the agentic loop.
 public enum SessionEvent: Sendable {
-    /// Streaming text chunk from the LLM.
-    case textDelta(String)
     /// The LLM decided to call a tool.
     case toolCallStart(id: String, name: String)
     /// A tool finished executing.

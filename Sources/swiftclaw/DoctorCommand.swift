@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import SwiftClawCore
+import SwiftClawPippin
 import SwiftClawTools
 
 struct DoctorCommand: AsyncParsableCommand {
@@ -15,6 +16,8 @@ struct DoctorCommand: AsyncParsableCommand {
     mutating func run() async throws {
         print("SwiftClaw Doctor")
         print("================\n")
+
+        var passed = true
 
         // System info
         print("[System]")
@@ -36,6 +39,7 @@ struct DoctorCommand: AsyncParsableCommand {
         print("Architecture: Apple Silicon (arm64) -- supported")
         #else
         print("Architecture: x86_64 -- MLX requires Apple Silicon")
+        passed = false
         #endif
 
         // Check for cached model
@@ -46,19 +50,22 @@ struct DoctorCommand: AsyncParsableCommand {
             print("Status: cached locally at \(cachePath)")
         } else {
             print("Status: not cached (will download on first run)")
+            passed = false
         }
 
         print("\n[Tools]")
-        let tools: [any SwiftClawTool] = [
-            SystemInfoTool(),
-            DiskSpaceTool(),
-            ProcessListTool(),
-            ShellTool(),
-        ]
+        let config = (try? SwiftClawConfig.load()) ?? .default
+        let tools: [any SwiftClawTool] =
+            SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
         for tool in tools {
             print("  \(tool.name) -- \(tool.description)")
         }
 
-        print("\nAll checks passed.")
+        print()
+        if passed {
+            print("All checks passed.")
+        } else {
+            print("Some checks failed (see above).")
+        }
     }
 }

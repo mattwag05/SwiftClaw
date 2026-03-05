@@ -82,12 +82,11 @@ struct RunCommand: AsyncParsableCommand {
         let agent = Agent(configuration: agentConfig)
 
         // Resolve session ID and optionally restore from saved state
-        let sessionId = session ?? UUID().uuidString
         let store = try FileSessionStore()
         let agentSession: Session
 
         let sessionConfig = SessionConfiguration(maxToolRoundTrips: maxRoundTrips)
-        if session != nil {
+        if let sessionId = session {
             do {
                 let restored = try await store.load(sessionId: sessionId)
                 agentSession = Session(
@@ -113,8 +112,7 @@ struct RunCommand: AsyncParsableCommand {
             agentSession = Session(
                 agent: agent,
                 backend: resolvedBackend,
-                config: sessionConfig,
-                sessionId: sessionId
+                config: sessionConfig
             )
         }
 
@@ -137,14 +135,22 @@ struct RunCommand: AsyncParsableCommand {
                 print("Goodbye.")
                 break
             }
+            if trimmed == "/help" {
+                print("Commands: /help  /tools  /quit  /exit")
+                continue
+            }
+            if trimmed == "/tools" {
+                print("Registered tools:")
+                for name in agent.toolRegistry.toolNames {
+                    print("  \(name)")
+                }
+                continue
+            }
 
             do {
                 let events = await agentSession.respond(to: trimmed)
                 for try await event in events {
                     switch event {
-                    case let .textDelta(text):
-                        print(text, terminator: "")
-                        fflush(stdout)
                     case let .toolCallStart(_, name):
                         print("\n[calling \(name)...]", terminator: "")
                         fflush(stdout)
