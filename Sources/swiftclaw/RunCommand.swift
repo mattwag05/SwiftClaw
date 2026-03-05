@@ -3,6 +3,7 @@ import Foundation
 import SwiftClawCore
 import SwiftClawHTTP
 import SwiftClawMLX
+import SwiftClawPippin
 import SwiftClawTools
 
 struct RunCommand: AsyncParsableCommand {
@@ -60,20 +61,19 @@ struct RunCommand: AsyncParsableCommand {
             print("Using HTTP backend: \(apiUrl) (model: \(httpModel))\n")
         }
 
-        let tools: [any SwiftClawTool] = [
-            SystemInfoTool(),
-            DiskSpaceTool(),
-            ProcessListTool(),
-            ShellTool(),
-        ]
+        let config = (try? SwiftClawConfig.load()) ?? .default
+        let tools: [any SwiftClawTool] =
+            SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
 
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
             systemPrompt: """
-                You are Sysop, a macOS system administration assistant. You have access to tools \
-                for checking system information, disk space, running processes, and executing \
-                sandboxed shell commands. Use these tools to help the user with system administration \
-                tasks. Be concise and accurate. When you use a tool, explain what you found.
+                You are Sysop, a macOS assistant. You have access to tools for system administration, \
+                file operations (read, write, list, find — sandboxed to allowed paths), \
+                environment inspection (env vars, date/time, clipboard), \
+                and pippin CLI wrappers for Apple Mail and Voice Memos (when pippin is installed). \
+                Be concise and accurate. When you use a tool, explain what you found. \
+                For mail_send, always confirm with the user before sending.
                 """,
             tools: tools,
             modelId: model,

@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import SwiftClawCore
+import SwiftClawPippin
 import SwiftClawTools
 
 struct ToolsCommand: AsyncParsableCommand {
@@ -13,12 +14,9 @@ struct ToolsCommand: AsyncParsableCommand {
     var json = false
 
     mutating func run() async throws {
-        let tools: [any SwiftClawTool] = [
-            SystemInfoTool(),
-            DiskSpaceTool(),
-            ProcessListTool(),
-            ShellTool(),
-        ]
+        let config = (try? SwiftClawConfig.load()) ?? .default
+        let tools: [any SwiftClawTool] =
+            SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
 
         if json {
             let encoder = JSONEncoder()
