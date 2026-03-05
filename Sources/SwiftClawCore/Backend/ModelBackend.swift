@@ -27,6 +27,15 @@ extension ModelBackend {
             if let fr = chunk.finishReason { finishReason = fr }
         }
 
+        // Strip Qwen3.5 tool call XML blocks (emitted when fallback parser fires).
+        if text.contains("<tool_call>") {
+            text = text.replacingOccurrences(
+                of: "<tool_call>[\\s\\S]*?</tool_call>",
+                with: "",
+                options: .regularExpression
+            )
+        }
+
         // Strip reasoning blocks emitted by Qwen3.5.
         // The model streams thinking content then closes with </think> (opening tag may be implicit).
         if let thinkEnd = text.range(of: "</think>") {

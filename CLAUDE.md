@@ -15,7 +15,7 @@ swift run swiftclaw tools          # List available tools
 .build/release/swiftclaw sessions list             # List saved sessions
 .build/release/swiftclaw sessions show <id>        # Print conversation history
 .build/release/swiftclaw sessions delete <id>      # Delete a session
-swift test                         # Run all tests (53 tests)
+swift test                         # Run all tests (62 tests)
 ```
 
 ## Architecture
@@ -55,7 +55,9 @@ swift test                         # Run all tests (53 tests)
 - **Use `ModelContainer` directly** — don't use `ChatSession`; SwiftClaw's `Session` actor owns the agentic loop
 - **MLX requires release binary + colocated metallib** — `swift run` / debug builds fail with "Failed to load the default metallib". Must: (1) `swift build -c release`, (2) `cp <mlx.metallib> .build/release/`. Get metallib via `pip install --target /tmp/mlx-metallib mlx==<version>` where version matches `mlx-swift` in Package.resolved.
 - **Model cache is `~/Library/Caches/models/<org>/<model>`** — e.g. `~/Library/Caches/models/mlx-community/Qwen3.5-9B-MLX-4bit`. Doctor checks this path directly (NOT HuggingFace's `models--` format).
-- **Qwen3.5 tool call format** — uses a custom `xmlFunctionTagged` format (not upstream mlx-swift-lm). Patch lives in `.build/checkouts/mlx-swift-lm/Libraries/MLXLMCommon/Tool/Parsers/XMLFunctionTaggedParser.swift`. Package.swift pins to commit `3a7f2b18` which added Qwen3.5 model support; the tool call format patch is our local addition to that checkout.
-- **`swift package update` wipes checkout patches** — editing files in `.build/checkouts/` is safe only while the revision is pinned. Document all local patches here and re-apply after any package update.
+- **Qwen3.5 tool calls parsed by `Qwen35ToolCallParser`** — `Sources/SwiftClawMLX/Qwen35ToolCallParser.swift` is a fallback that scans accumulated text for `<tool_call>` blocks when mlx-swift-lm doesn't emit native `.toolCall` events. `swift package update` is now safe — no checkout patches needed.
 - **Tool Arguments: accept string-encoded integers** — the Qwen3.5 XML parser passes all parameter values as strings. Tool `Arguments` structs with `Int?` fields need a custom `Decodable` that accepts both `Int` and numeric `String`. See `ProcessListTool` and `ShellTool` for the pattern.
 - **Qwen3.5 `<think>` blocks** — model streams reasoning content *without* an opening `<think>` tag; only `</think>` is emitted. Regex `<think>.*</think>` never matches. Filter: `if let r = text.range(of: "</think>") { text = String(text[r.upperBound...]) }` (in `ModelBackend` non-streaming extension).
+- **`swift package reset` xattr block** — macOS may set `com.apple.provenance` on `.build`, blocking `swift package reset`. Fix: `xattr -d com.apple.provenance .build` then retry.
+- **`.build/checkouts/` invisible to `ls`** — macOS privacy layer hides it. Use `find .build/checkouts -name "*.swift"` or `swift package show-dependencies` instead.
+- **`JSONSerialization` escapes `/`** — use `.withoutEscapingSlashes` option when the JSON string will be inspected or tested: `JSONSerialization.data(withJSONObject: obj, options: .withoutEscapingSlashes)`.

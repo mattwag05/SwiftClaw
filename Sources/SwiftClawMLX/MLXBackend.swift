@@ -93,10 +93,12 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
         )
 
         var collectedToolCalls: [ToolCallRequest] = []
+        var accumulatedText = ""
 
         for await generation in generationStream {
             switch generation {
             case let .chunk(text):
+                accumulatedText += text
                 continuation.yield(StreamChunk(text: text))
 
             case let .toolCall(toolCall):
@@ -104,6 +106,13 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
                 collectedToolCalls.append(request)
 
             case let .info(info):
+                // Fallback: parse Qwen3.5 tool call XML when mlx-swift-lm
+                // didn't emit native .toolCall events for this format.
+                if collectedToolCalls.isEmpty && accumulatedText.contains("<tool_call>") {
+                    let parsed = Qwen35ToolCallParser.parse(text: accumulatedText)
+                    collectedToolCalls = parsed.toolCalls
+                }
+
                 let reason: StreamChunk.FinishReason
                 if !collectedToolCalls.isEmpty {
                     reason = .toolCall
