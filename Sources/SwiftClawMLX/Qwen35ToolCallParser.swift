@@ -24,28 +24,55 @@ enum Qwen35ToolCallParser {
         let remainingText: String
     }
 
-    /// Parse all `<tool_call>...</tool_call>` blocks from accumulated generation text.
+    /// Parse all tool call blocks from accumulated generation text.
+    ///
+    /// Handles two formats:
+    /// 1. `<tool_call>...<function=name>...</function>...</tool_call>` (full template format)
+    /// 2. `<function=name>...<parameter=key>value</parameter>...</function>` (bare, without outer tag)
     static func parse(text: String) -> ParseResult {
         var toolCalls: [ToolCallRequest] = []
         var result = ""
         var remaining = text
 
-        let startTag = "<tool_call>"
-        let endTag = "</tool_call>"
-
-        while let blockStart = remaining.range(of: startTag),
-              let blockEnd = remaining.range(of: endTag),
+        // First pass: extract <tool_call>...</tool_call> blocks
+        let outerStart = "<tool_call>"
+        let outerEnd = "</tool_call>"
+        var pass1 = ""
+        var rem = remaining
+        while let blockStart = rem.range(of: outerStart),
+              let blockEnd = rem.range(of: outerEnd),
               blockStart.upperBound <= blockEnd.lowerBound
         {
-            result += remaining[remaining.startIndex..<blockStart.lowerBound]
-            let inner = String(remaining[blockStart.upperBound..<blockEnd.lowerBound])
+            pass1 += rem[rem.startIndex..<blockStart.lowerBound]
+            let inner = String(rem[blockStart.upperBound..<blockEnd.lowerBound])
             if let call = parseBlock(inner) {
                 toolCalls.append(call)
             }
-            remaining = String(remaining[blockEnd.upperBound...])
+            rem = String(rem[blockEnd.upperBound...])
         }
+        pass1 += rem
+        remaining = pass1
 
-        result += remaining
+        // Second pass: extract bare <function=name>...</function> blocks
+        let funcStart = "<function="
+        let funcEnd = "</function>"
+        var pass2 = ""
+        rem = remaining
+        while let blockStart = rem.range(of: funcStart),
+              let blockEnd = rem.range(of: funcEnd),
+              blockStart.upperBound <= blockEnd.lowerBound
+        {
+            pass2 += rem[rem.startIndex..<blockStart.lowerBound]
+            // Treat as if inside a <tool_call> block
+            let inner = String(rem[blockStart.lowerBound..<blockEnd.upperBound])
+            if let call = parseBlock(inner) {
+                toolCalls.append(call)
+            }
+            rem = String(rem[blockEnd.upperBound...])
+        }
+        pass2 += rem
+        result = pass2
+
         return ParseResult(toolCalls: toolCalls, remainingText: result)
     }
 

@@ -28,9 +28,18 @@ extension ModelBackend {
         }
 
         // Strip Qwen3.5 tool call XML blocks (emitted when fallback parser fires).
+        // Handles both <tool_call>...</tool_call> (template format) and
+        // bare <function=name>...</function> (text-injection format).
         if text.contains("<tool_call>") {
             text = text.replacingOccurrences(
                 of: "<tool_call>[\\s\\S]*?</tool_call>",
+                with: "",
+                options: .regularExpression
+            )
+        }
+        if text.contains("<function=") {
+            text = text.replacingOccurrences(
+                of: "<function=[\\s\\S]*?</function>",
                 with: "",
                 options: .regularExpression
             )

@@ -15,7 +15,17 @@ swift run swiftclaw tools          # List available tools
 .build/release/swiftclaw sessions list             # List saved sessions
 .build/release/swiftclaw sessions show <id>        # Print conversation history
 .build/release/swiftclaw sessions delete <id>      # Delete a session
-swift test                         # Run all tests (117 tests)
+swift test                         # Run all tests (116 tests)
+```
+
+## MLX Setup (one-time)
+
+```bash
+swift build -c release
+# Find mlx version from Package.resolved, then:
+pip install --target /tmp/mlx-metallib mlx==<version>
+cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
+# Now run: .build/release/swiftclaw run
 ```
 
 ## Architecture
@@ -64,6 +74,6 @@ swift test                         # Run all tests (117 tests)
 - **`JSONSerialization` escapes `/`** — use `.withoutEscapingSlashes` option when the JSON string will be inspected or tested: `JSONSerialization.data(withJSONObject: obj, options: .withoutEscapingSlashes)`.
 - **`DirectoryEnumerator` in async** — `for case let item as String in enumerator` is a Swift 6 error ("makeIterator unavailable from asynchronous contexts"). Use `enumerator.allObjects.compactMap { $0 as? String }` instead.
 - **`TimeZone(identifier: "UTC").identifier` returns `"GMT"`** on macOS — tests checking for the literal string "UTC" will fail; accept either "UTC" or "GMT".
-- **Claude Code hook `matcher` matches tool names only** — no `filePattern` field exists in the schema. To filter by file path in a PreToolUse hook, parse stdin JSON: `python3 -c "import sys,json; d=json.load(sys.stdin); fp=d.get('tool_input',{}).get('file_path',''); exit(2 if fp.endswith('TARGET') else 0)"`
-- **Hooks that check raw stdin content will match file content too** — a PreToolUse hook grep-ing stdin for a string will block writes whose *content* contains that string, not just the file path. Fix: parse `tool_input.file_path` specifically.
-- **Bash bypasses Edit/Write hooks** — if a PreToolUse hook blocks Edit/Write, use `Bash` with a heredoc to write the file (Bash is a different tool name and won't match the `Edit|Write` matcher).
+- **`ToolCallFormat.json` is correct for Qwen3.5** — uses `<tool_call>{...}</tool_call>`. `.xmlFunction` is for Qwen3 **Coder** only. `ToolCallFormat.infer("qwen3_5")` returns nil, which correctly defaults to `.json`.
+- **Qwen3.5 tool calls — text-injection (verified 2026-03-05)** — passing `UserInput.tools` or any `<tool_call>` token in the system message triggers EOS-after-think (model stops generating after `</think>`). `enable_thinking: false` also fails — generates 0 tokens. Working fix: `toolSpecs = nil`, inject tool descriptions as plain text with `<function=NAME>` format (no `<tool_call>` token); `Qwen35ToolCallParser` handles bare `<function=...>` blocks; `ModelBackend` strips them from response text.
+- **Prefer `loadModelContainer(configuration:)`** over `loadModelContainer(id:)` — takes a `ModelConfiguration` so fields like `toolCallFormat` can be set before loading.

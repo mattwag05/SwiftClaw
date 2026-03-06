@@ -19,8 +19,9 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
         progressHandler: (@Sendable (Progress) -> Void)? = nil
     ) async throws {
         do {
+            let configuration = ModelConfiguration(id: modelId)
             self.modelContainer = try await loadModelContainer(
-                id: modelId,
+                configuration: configuration,
                 progressHandler: progressHandler ?? { _ in }
             )
         } catch {
@@ -42,7 +43,25 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
 
         let modelContainer = self.modelContainer
         let chatMessages = MLXToolBridge.toChatMessages(messages)
-        let toolSpecs: [ToolSpec]? = tools.isEmpty ? nil : tools.map { MLXToolBridge.toToolSpec($0) }
+        // Strategy: Don't pass tools via UserInput.tools (template tool mechanism broken for
+        // this quantized model — model stops at </think>\n\n EOS before generating <tool_call>).
+        // Instead, inject tool descriptions into the system message as text and parse
+        // tool calls from the model's natural text generation.
+        // Text-injection: Don't use template's tool mechanism (causes model to stop at EOS after think).
+        // Instead, inject tool descriptions as text into system message and use enable_thinking:false
+        // so the model skips the think block and generates the tool call directly.
+        // Text-injection strategy: pass tools as system-message text (not via UserInput.tools).
+        // Using UserInput.tools (template mechanism) causes the model to stop at </think>\n\n
+        // without generating <tool_call>. Text-injection avoids this.
+        // enable_thinking: false is passed when tools are present so the model skips the
+        // think block and outputs the tool call or response directly.
+        let toolSpecs: [ToolSpec]? = nil
+        let hasTools = !tools.isEmpty
+        let chatWithTools = hasTools
+            ? MLXToolBridge.injectToolsIntoSystemMessage(chatMessages, tools: tools)
+            : chatMessages
+        // Keep thinking mode enabled; model generates think block then the tool call as text.
+        let additionalCtx: [String: any Sendable]? = nil
         let maxTokens = config.maxTokens
         let temperature = config.temperature
         let topP = config.topP
@@ -51,8 +70,9 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
             do {
                 try await Self.runGeneration(
                     modelContainer: modelContainer,
-                    chatMessages: chatMessages,
+                    chatMessages: chatWithTools,
                     toolSpecs: toolSpecs,
+                    additionalContext: additionalCtx,
                     maxTokens: maxTokens,
                     temperature: temperature,
                     topP: topP,
@@ -70,14 +90,17 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
         modelContainer: ModelContainer,
         chatMessages: [Chat.Message],
         toolSpecs: [ToolSpec]?,
+        additionalContext: [String: any Sendable]?,
         maxTokens: Int,
         temperature: Float,
         topP: Float?,
         continuation: AsyncThrowingStream<StreamChunk, Error>.Continuation
     ) async throws {
+
         let userInput = UserInput(
             chat: chatMessages,
-            tools: toolSpecs
+            tools: toolSpecs,
+            additionalContext: additionalContext
         )
 
         let lmInput = try await modelContainer.prepare(input: userInput)
@@ -106,9 +129,12 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
                 collectedToolCalls.append(request)
 
             case let .info(info):
-                // Fallback: parse Qwen3.5 tool call XML when mlx-swift-lm
-                // didn't emit native .toolCall events for this format.
-                if collectedToolCalls.isEmpty && accumulatedText.contains("<tool_call>") {
+                // Fallback: parse tool call XML from text.
+                // Handles <tool_call>...</tool_call> (template format) and
+                // bare <function=name>...</function> (text-injection format).
+                if collectedToolCalls.isEmpty &&
+                    (accumulatedText.contains("<tool_call>") || accumulatedText.contains("<function="))
+                {
                     let parsed = Qwen35ToolCallParser.parse(text: accumulatedText)
                     collectedToolCalls = parsed.toolCalls
                 }
