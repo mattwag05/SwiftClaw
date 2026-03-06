@@ -25,12 +25,14 @@ struct SessionsCommand: AsyncParsableCommand {
             let formatter = DateFormatter()
             formatter.dateStyle = .short
             formatter.timeStyle = .short
-            print(String(format: "%-36s  %-12s  %5s  %s", "SESSION ID", "AGENT", "MSGS", "LAST UPDATED"))
+            func col(_ s: String, _ w: Int) -> String { s.padding(toLength: w, withPad: " ", startingAt: 0) }
+            print("\(col("SESSION ID", 36))  \(col("AGENT", 12))  \(col("MSGS", 5))  LAST UPDATED")
             print(String(repeating: "-", count: 80))
             for s in summaries {
                 let date = formatter.string(from: s.updatedAt)
                 let preview = s.preview.isEmpty ? "(no messages)" : s.preview
-                print(String(format: "%-36s  %-12s  %5d  %s", s.sessionId, s.agentName, s.messageCount, date))
+                let countStr = String(s.messageCount).padding(toLength: 5, withPad: " ", startingAt: 0)
+                print("\(col(s.sessionId, 36))  \(col(s.agentName, 12))  \(countStr)  \(date)")
                 print("  \(preview)")
             }
         }
