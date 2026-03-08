@@ -3,7 +3,6 @@ import MLX
 @preconcurrency import MLXLMCommon
 import MLXLLM
 import SwiftClawCore
-import Tokenizers
 
 /// MLX-native model backend using mlx-swift-lm for on-device inference.
 public final class MLXBackend: ModelBackend, @unchecked Sendable {
@@ -43,39 +42,19 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
 
         let modelContainer = self.modelContainer
         let chatMessages = MLXToolBridge.toChatMessages(messages)
-        // Strategy: Don't pass tools via UserInput.tools (template tool mechanism broken for
-        // this quantized model — model stops at </think>\n\n EOS before generating <tool_call>).
-        // Instead, inject tool descriptions into the system message as text and parse
-        // tool calls from the model's natural text generation.
-        // Text-injection: Don't use template's tool mechanism (causes model to stop at EOS after think).
-        // Instead, inject tool descriptions as text into system message and use enable_thinking:false
-        // so the model skips the think block and generates the tool call directly.
-        // Text-injection strategy: pass tools as system-message text (not via UserInput.tools).
-        // Using UserInput.tools (template mechanism) causes the model to stop at </think>\n\n
-        // without generating <tool_call>. Text-injection avoids this.
-        // enable_thinking: false is passed when tools are present so the model skips the
-        // think block and outputs the tool call or response directly.
-        let toolSpecs: [ToolSpec]? = nil
-        let hasTools = !tools.isEmpty
-        let chatWithTools = hasTools
-            ? MLXToolBridge.injectToolsIntoSystemMessage(chatMessages, tools: tools)
-            : chatMessages
-        // Keep thinking mode enabled; model generates think block then the tool call as text.
-        let additionalCtx: [String: any Sendable]? = nil
-        let maxTokens = config.maxTokens
-        let temperature = config.temperature
-        let topP = config.topP
+        // Text-injection strategy: tools are appended to the system message as plain text
+        // rather than passed via UserInput.tools. The template tool mechanism causes the model
+        // to stop at EOS after </think> without generating a tool call.
+        let chatWithTools = tools.isEmpty
+            ? chatMessages
+            : MLXToolBridge.injectToolsIntoSystemMessage(chatMessages, tools: tools)
 
         Task { @Sendable in
             do {
                 try await Self.runGeneration(
                     modelContainer: modelContainer,
                     chatMessages: chatWithTools,
-                    toolSpecs: toolSpecs,
-                    additionalContext: additionalCtx,
-                    maxTokens: maxTokens,
-                    temperature: temperature,
-                    topP: topP,
+                    config: config,
                     continuation: continuation
                 )
             } catch {
@@ -89,26 +68,18 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
     private static func runGeneration(
         modelContainer: ModelContainer,
         chatMessages: [Chat.Message],
-        toolSpecs: [ToolSpec]?,
-        additionalContext: [String: any Sendable]?,
-        maxTokens: Int,
-        temperature: Float,
-        topP: Float?,
+        config: GenerationConfig,
         continuation: AsyncThrowingStream<StreamChunk, Error>.Continuation
     ) async throws {
 
-        let userInput = UserInput(
-            chat: chatMessages,
-            tools: toolSpecs,
-            additionalContext: additionalContext
-        )
+        let userInput = UserInput(chat: chatMessages)
 
         let lmInput = try await modelContainer.prepare(input: userInput)
 
         var generateParams = GenerateParameters()
-        generateParams.maxTokens = maxTokens
-        generateParams.temperature = temperature
-        if let topP { generateParams.topP = topP }
+        generateParams.maxTokens = config.maxTokens
+        generateParams.temperature = config.temperature
+        if let topP = config.topP { generateParams.topP = topP }
 
         let generationStream = try await modelContainer.generate(
             input: lmInput,

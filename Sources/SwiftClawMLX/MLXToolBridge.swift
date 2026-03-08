@@ -1,74 +1,9 @@
 import Foundation
 import MLXLMCommon
 import SwiftClawCore
-import Tokenizers
 
-/// Converts between SwiftClaw's tool types and mlx-swift-lm's ToolSpec format.
+/// Bridges between SwiftClaw's tool/message types and mlx-swift-lm types.
 enum MLXToolBridge {
-
-    /// Convert a SwiftClaw `ToolDefinition` to an mlx-swift-lm `ToolSpec`.
-    ///
-    /// ToolSpec is `[String: any Sendable]` with structure:
-    /// `{"type": "function", "function": {"name": ..., "description": ..., "parameters": {...}}}`
-    static func toToolSpec(_ definition: ToolDefinition) -> ToolSpec {
-        [
-            "type": "function" as any Sendable,
-            "function": [
-                "name": definition.name,
-                "description": definition.description,
-                "parameters": jsonSchemaToDict(definition.parameters),
-            ] as [String: any Sendable] as any Sendable,
-        ]
-    }
-
-    /// Convert SwiftClaw's `JSONSchema` to a dictionary for ToolSpec.
-    private static func jsonSchemaToDict(_ schema: JSONSchema) -> [String: any Sendable] {
-        switch schema {
-        case let .object(properties, required):
-            var dict: [String: any Sendable] = ["type": "object"]
-            var propsDict: [String: any Sendable] = [:]
-            for (key, value) in properties {
-                propsDict[key] = jsonSchemaToDict(value)
-            }
-            dict["properties"] = propsDict
-            if !required.isEmpty {
-                dict["required"] = required
-            }
-            return dict
-
-        case let .string(description):
-            var dict: [String: any Sendable] = ["type": "string"]
-            if let desc = description { dict["description"] = desc }
-            return dict
-
-        case let .integer(description):
-            var dict: [String: any Sendable] = ["type": "integer"]
-            if let desc = description { dict["description"] = desc }
-            return dict
-
-        case let .number(description):
-            var dict: [String: any Sendable] = ["type": "number"]
-            if let desc = description { dict["description"] = desc }
-            return dict
-
-        case let .boolean(description):
-            var dict: [String: any Sendable] = ["type": "boolean"]
-            if let desc = description { dict["description"] = desc }
-            return dict
-
-        case let .array(items, description):
-            var dict: [String: any Sendable] = ["type": "array"]
-            dict["items"] = jsonSchemaToDict(items)
-            if let desc = description { dict["description"] = desc }
-            return dict
-
-        case let .enumeration(values, description):
-            var dict: [String: any Sendable] = ["type": "string"]
-            dict["enum"] = values
-            if let desc = description { dict["description"] = desc }
-            return dict
-        }
-    }
 
     /// Convert SwiftClaw `Message` array to mlx-swift-lm `Chat.Message` array.
     static func toChatMessages(_ messages: [SwiftClawCore.Message]) -> [Chat.Message] {
@@ -146,22 +81,6 @@ enum MLXToolBridge {
         case let .enumeration(vals, desc): return "enum(\(vals.joined(separator: "|")))\(desc.map { " — \($0)" } ?? "")"
         case .object: return "object"
         }
-    }
-
-    /// Format tool calls as JSON for the assistant message content.
-    private static func formatToolCallsForAssistant(_ toolCalls: [ToolCallRequest]) -> String {
-        let calls = toolCalls.map { call -> [String: Any] in
-            [
-                "name": call.name,
-                "arguments": (try? JSONSerialization.jsonObject(with: Data(call.arguments.utf8))) ?? call.arguments,
-            ]
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: calls, options: .fragmentsAllowed),
-              let string = String(data: data, encoding: .utf8)
-        else {
-            return ""
-        }
-        return string
     }
 
     /// Convert an mlx-swift-lm `ToolCall` to a SwiftClaw `ToolCallRequest`.
