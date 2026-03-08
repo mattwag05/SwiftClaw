@@ -16,6 +16,10 @@ swift run swiftclaw tools          # List available tools
 .build/release/swiftclaw sessions show <id>        # Print conversation history
 .build/release/swiftclaw sessions delete <id>      # Delete a session
 .build/release/swiftclaw sessions export <id>      # Export session as LoRA training JSONL
+.build/release/swiftclaw train --name <n> --sessions <id1,id2> --iterations 100  # Train LoRA adapter
+.build/release/swiftclaw adapters list             # List trained adapters
+.build/release/swiftclaw adapters delete <name>    # Delete an adapter
+.build/release/swiftclaw run --adapter ~/.swiftclaw/adapters/<name>  # Run with LoRA adapter (MLX only)
 swift test                         # Run all tests (145 tests)
 ```
 
@@ -33,6 +37,8 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 
 - **SwiftClawCore**: Agent runtime, session orchestration, tool protocol, model backend protocol, session store protocol, agent memory
 - **SwiftClawMLX**: Concrete MLX backend using mlx-swift-lm (native, no Python)
+  - `LoRATrainer`: trains adapters from JSONL session exports via MLXOptimizers; stored in `~/.swiftclaw/adapters/`
+  - `AdapterStore`: adapter metadata and lifecycle management
 - **SwiftClawHTTP**: OpenAI-compatible HTTP backend (Foundation-only, targets Ollama/OpenAI)
 - **SwiftClawTools**: Built-in tools (system info, disk, processes, shell, file ops, env/datetime/clipboard); `SwiftClawToolFactory.allTools(config:)` for registration
 - **SwiftClawPippin**: Pippin CLI wrappers (mail + memos); `PippinToolFactory.allTools()` returns empty if binary absent

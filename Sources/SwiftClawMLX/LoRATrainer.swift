@@ -20,6 +20,8 @@ public struct LoRATrainingConfig: Sendable {
     public var stepsPerReport: Int
     public var stepsPerEval: Int
     public var saveEvery: Int
+    public var tags: [String]
+    public var description: String?
 
     public init(
         name: String,
@@ -33,7 +35,9 @@ public struct LoRATrainingConfig: Sendable {
         validationSplit: Float = 0.1,
         stepsPerReport: Int = 10,
         stepsPerEval: Int = 50,
-        saveEvery: Int = 50
+        saveEvery: Int = 50,
+        tags: [String] = [],
+        description: String? = nil
     ) {
         self.name = name
         self.modelId = modelId
@@ -47,6 +51,8 @@ public struct LoRATrainingConfig: Sendable {
         self.stepsPerReport = stepsPerReport
         self.stepsPerEval = stepsPerEval
         self.saveEvery = saveEvery
+        self.tags = tags
+        self.description = description
     }
 }
 
@@ -227,7 +233,9 @@ public struct LoRATrainer: Sendable {
             numLayers: config.numLayers,
             finalTrainingLoss: finalTrainLoss,
             finalValidationLoss: finalValidLoss,
-            sessionCount: textSessions.count
+            sessionCount: textSessions.count,
+            tags: config.tags,
+            description: config.description
         )
         try store.saveMetadata(metadata)
         committed = true

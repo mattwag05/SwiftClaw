@@ -2,7 +2,7 @@ import Foundation
 import SwiftClawCore
 
 /// Metadata recorded alongside each trained LoRA adapter.
-public struct AdapterMetadata: Codable, Sendable {
+public struct AdapterMetadata: Sendable {
     public let name: String
     public let modelId: String
     public let createdAt: Date
@@ -12,6 +12,8 @@ public struct AdapterMetadata: Codable, Sendable {
     public let finalTrainingLoss: Float?
     public let finalValidationLoss: Float?
     public let sessionCount: Int
+    public var tags: [String]
+    public var description: String?
 
     public init(
         name: String,
@@ -22,7 +24,9 @@ public struct AdapterMetadata: Codable, Sendable {
         numLayers: Int,
         finalTrainingLoss: Float? = nil,
         finalValidationLoss: Float? = nil,
-        sessionCount: Int
+        sessionCount: Int,
+        tags: [String] = [],
+        description: String? = nil
     ) {
         self.name = name
         self.modelId = modelId
@@ -33,6 +37,30 @@ public struct AdapterMetadata: Codable, Sendable {
         self.finalTrainingLoss = finalTrainingLoss
         self.finalValidationLoss = finalValidationLoss
         self.sessionCount = sessionCount
+        self.tags = tags
+        self.description = description
+    }
+}
+
+extension AdapterMetadata: Codable {
+    enum CodingKeys: String, CodingKey {
+        case name, modelId, createdAt, iterations, rank, numLayers
+        case finalTrainingLoss, finalValidationLoss, sessionCount, tags, description
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        modelId = try c.decode(String.self, forKey: .modelId)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        iterations = try c.decode(Int.self, forKey: .iterations)
+        rank = try c.decode(Int.self, forKey: .rank)
+        numLayers = try c.decode(Int.self, forKey: .numLayers)
+        finalTrainingLoss = try c.decodeIfPresent(Float.self, forKey: .finalTrainingLoss)
+        finalValidationLoss = try c.decodeIfPresent(Float.self, forKey: .finalValidationLoss)
+        sessionCount = try c.decode(Int.self, forKey: .sessionCount)
+        tags = (try c.decodeIfPresent([String].self, forKey: .tags)) ?? []
+        description = try c.decodeIfPresent(String.self, forKey: .description)
     }
 }
 
@@ -54,11 +82,15 @@ public struct AdapterStore: Sendable {
         return e
     }()
 
-    public init() throws {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let dir = home.appending(path: ".swiftclaw/adapters", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        self.adaptersURL = dir
+    public init(adaptersURL: URL? = nil) throws {
+        if let adaptersURL {
+            self.adaptersURL = adaptersURL
+        } else {
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            let dir = home.appending(path: ".swiftclaw/adapters", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            self.adaptersURL = dir
+        }
     }
 
     // MARK: - Directory URL

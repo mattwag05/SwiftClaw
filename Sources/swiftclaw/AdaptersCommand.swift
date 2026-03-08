@@ -6,7 +6,7 @@ struct AdaptersCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "adapters",
         abstract: "Manage trained LoRA adapters.",
-        subcommands: [ListCommand.self, DeleteCommand.self]
+        subcommands: [ListCommand.self, DeleteCommand.self, TagCommand.self]
     )
 
     struct ListCommand: AsyncParsableCommand {
@@ -36,6 +36,12 @@ struct AdaptersCommand: AsyncParsableCommand {
                     let vl = adapter.finalValidationLoss.map { String(format: "  val=%.4f", $0) } ?? ""
                     print("  train_loss=\(String(format: "%.4f", tl))\(vl)  sessions=\(adapter.sessionCount)  layers=\(adapter.numLayers)")
                 }
+                if !adapter.tags.isEmpty {
+                    print("  tags: \(adapter.tags.joined(separator: ", "))")
+                }
+                if let desc = adapter.description {
+                    print("  desc: \(desc)")
+                }
             }
         }
     }
@@ -55,4 +61,44 @@ struct AdaptersCommand: AsyncParsableCommand {
             print("Deleted adapter '\(name)'.")
         }
     }
+
+    struct TagCommand: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "tag",
+            abstract: "Add or remove tags on a trained adapter."
+        )
+
+        @Argument(help: "Adapter name.")
+        var name: String
+
+        @Option(name: .long, help: "Comma-separated tags to add.")
+        var add: String?
+
+        @Option(name: .long, help: "Comma-separated tags to remove.")
+        var remove: String?
+
+        mutating func run() async throws {
+            let store = try AdapterStore()
+            var meta = try store.loadMetadata(name: name)
+
+            if let toAdd = add {
+                let newTags = parseTags(toAdd)
+                for tag in newTags where !meta.tags.contains(tag) {
+                    meta.tags.append(tag)
+                }
+            }
+            if let toRemove = remove {
+                let dropTags = Set(parseTags(toRemove))
+                meta.tags = meta.tags.filter { !dropTags.contains($0) }
+            }
+
+            try store.saveMetadata(meta)
+            if meta.tags.isEmpty {
+                print("'\(name)' tags cleared.")
+            } else {
+                print("'\(name)' tags: \(meta.tags.joined(separator: ", "))")
+            }
+        }
+    }
 }
+

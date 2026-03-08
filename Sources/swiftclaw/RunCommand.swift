@@ -40,13 +40,30 @@ struct RunCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Path to a trained LoRA adapter directory (MLX backend only).")
     var adapter: String?
 
+    @Flag(name: .long, help: "Auto-select the best adapter for this session (MLX only, ignored when --adapter is set).")
+    var autoAdapter: Bool = false
+
     mutating func run() async throws {
         print("SwiftClaw \(SwiftClawVersion.version)")
 
         let resolvedBackend: any ModelBackend
         switch backend {
         case .mlx:
-            let adapterURL = adapter.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+            var adapterURL = adapter.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+            if adapterURL == nil && autoAdapter {
+                // No prompt context at startup — tag component scores 0; selection falls back to loss+recency.
+                let context = ""
+                let adapterStore = try AdapterStore()
+                let allAdapters = (try? adapterStore.list()) ?? []
+                let selected = AdapterSelector().select(prompt: context, from: allAdapters, forModel: model)
+                if let selected, let url = try? adapterStore.adapterURL(name: selected.name) {
+                    let tagSuffix = selected.tags.isEmpty ? "" : " [tags: \(selected.tags.joined(separator: ", "))]"
+                    print("Auto-selected adapter: \(selected.name)\(tagSuffix)")
+                    adapterURL = url
+                } else {
+                    print("Auto-adapter: no suitable adapter found, using base model.")
+                }
+            }
             if let adapterURL { print("Loading adapter: \(adapterURL.path)") }
             print("Loading model: \(model)...")
             resolvedBackend = try await loadMLXBackend(modelId: model, adapterPath: adapterURL) { progress in

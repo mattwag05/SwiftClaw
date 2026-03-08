@@ -39,6 +39,12 @@ struct TrainCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Training batch size.")
     var batchSize: Int = 1
 
+    @Option(name: .long, help: "Comma-separated tags for auto-selection (e.g. coding,swift).")
+    var tags: String?
+
+    @Option(name: .long, help: "Short description of what this adapter is trained for.")
+    var description: String?
+
     mutating func run() async throws {
         // Validate inputs
         guard sessions != nil || all else {
@@ -88,6 +94,7 @@ struct TrainCommand: AsyncParsableCommand {
             throw ExitCode.failure
         }
 
+        let parsedTags = tags.map { parseTags($0) } ?? []
         let config = LoRATrainingConfig(
             name: name,
             modelId: model,
@@ -95,7 +102,9 @@ struct TrainCommand: AsyncParsableCommand {
             rank: rank,
             batchSize: batchSize,
             iterations: iterations,
-            learningRate: learningRate
+            learningRate: learningRate,
+            tags: parsedTags,
+            description: description
         )
 
         fputs("Loading model: \(model)...\n", stderr)
