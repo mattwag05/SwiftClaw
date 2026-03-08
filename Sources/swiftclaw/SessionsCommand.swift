@@ -25,7 +25,6 @@ struct SessionsCommand: AsyncParsableCommand {
             let formatter = DateFormatter()
             formatter.dateStyle = .short
             formatter.timeStyle = .short
-            func col(_ s: String, _ w: Int) -> String { s.padding(toLength: w, withPad: " ", startingAt: 0) }
             print("\(col("SESSION ID", 36))  \(col("AGENT", 12))  \(col("MSGS", 5))  LAST UPDATED")
             print(String(repeating: "-", count: 80))
             for s in summaries {

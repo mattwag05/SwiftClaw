@@ -10,6 +10,9 @@ public enum SwiftClawError: LocalizedError, Equatable {
     case sseParsingFailed(String)
     case sessionNotFound(String)
     case storageError(String)
+    case trainingFailed(String)
+    case adapterNotFound(String)
+    case insufficientTrainingData(String)
 
     public var errorDescription: String? {
         switch self {
@@ -31,6 +34,12 @@ public enum SwiftClawError: LocalizedError, Equatable {
             "Session not found: \(id)"
         case let .storageError(detail):
             "Storage error: \(detail)"
+        case let .trainingFailed(detail):
+            "Training failed: \(detail)"
+        case let .adapterNotFound(name):
+            "Adapter not found: \(name)"
+        case let .insufficientTrainingData(detail):
+            "Insufficient training data: \(detail)"
         }
     }
 }

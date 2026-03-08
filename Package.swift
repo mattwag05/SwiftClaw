@@ -15,6 +15,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", branch: "main"),
+        .package(url: "https://github.com/ml-explore/mlx-swift.git", exact: "0.30.6"),
     ],
     targets: [
         .target(name: "SwiftClawCore"),
@@ -23,6 +24,7 @@ let package = Package(
             "SwiftClawCore",
             .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
             .product(name: "MLXLLM", package: "mlx-swift-lm"),
+            .product(name: "MLXOptimizers", package: "mlx-swift"),
         ]),
         .target(name: "SwiftClawTools", dependencies: ["SwiftClawCore"]),
         .target(name: "SwiftClawPippin", dependencies: ["SwiftClawCore"]),

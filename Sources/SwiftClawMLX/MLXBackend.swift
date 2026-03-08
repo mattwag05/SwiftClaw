@@ -12,17 +12,26 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
     ///
     /// - Parameters:
     ///   - modelId: Hugging Face model ID (e.g. "mlx-community/Qwen3.5-9B-MLX-4bit")
+    ///   - adapterPath: Optional path to a trained LoRA adapter directory.
     ///   - progressHandler: Optional callback for download progress
     public init(
         modelId: String,
+        adapterPath: URL? = nil,
         progressHandler: (@Sendable (Progress) -> Void)? = nil
     ) async throws {
         do {
             let configuration = ModelConfiguration(id: modelId)
-            self.modelContainer = try await loadModelContainer(
+            let container = try await loadModelContainer(
                 configuration: configuration,
                 progressHandler: progressHandler ?? { _ in }
             )
+            if let adapterPath {
+                try await container.perform { context in
+                    let adapter = try LoRAContainer.from(directory: adapterPath)
+                    try adapter.load(into: context.model)
+                }
+            }
+            self.modelContainer = container
         } catch {
             throw SwiftClawError.modelLoadFailed("\(modelId): \(error.localizedDescription)")
         }
@@ -133,9 +142,10 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
 /// Load model convenience function with SwiftClaw error handling.
 public func loadMLXBackend(
     modelId: String,
+    adapterPath: URL? = nil,
     onProgress: (@Sendable (Double) -> Void)? = nil
 ) async throws -> MLXBackend {
-    try await MLXBackend(modelId: modelId) { progress in
+    try await MLXBackend(modelId: modelId, adapterPath: adapterPath) { progress in
         onProgress?(progress.fractionCompleted)
     }
 }

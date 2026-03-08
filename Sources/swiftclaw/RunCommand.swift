@@ -37,14 +37,19 @@ struct RunCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Session ID to create or resume.")
     var session: String?
 
+    @Option(name: .long, help: "Path to a trained LoRA adapter directory (MLX backend only).")
+    var adapter: String?
+
     mutating func run() async throws {
         print("SwiftClaw \(SwiftClawVersion.version)")
 
         let resolvedBackend: any ModelBackend
         switch backend {
         case .mlx:
+            let adapterURL = adapter.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+            if let adapterURL { print("Loading adapter: \(adapterURL.path)") }
             print("Loading model: \(model)...")
-            resolvedBackend = try await loadMLXBackend(modelId: model) { progress in
+            resolvedBackend = try await loadMLXBackend(modelId: model, adapterPath: adapterURL) { progress in
                 let pct = Int(progress * 100)
                 if pct % 10 == 0 {
                     print("  Download: \(pct)%", terminator: "\r")
