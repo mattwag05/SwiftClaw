@@ -15,7 +15,8 @@ swift run swiftclaw tools          # List available tools
 .build/release/swiftclaw sessions list             # List saved sessions
 .build/release/swiftclaw sessions show <id>        # Print conversation history
 .build/release/swiftclaw sessions delete <id>      # Delete a session
-swift test                         # Run all tests (116 tests)
+.build/release/swiftclaw sessions export <id>      # Export session as LoRA training JSONL
+swift test                         # Run all tests (145 tests)
 ```
 
 ## MLX Setup (one-time)
@@ -53,6 +54,7 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 - `LocalizedError` enums for errors
 - SPM library+executable split
 - All types must be `Sendable`
+- Issue tracking via `bd` — see `AGENTS.md` and `.beads/`
 
 ## Gotchas & Fixes
 
@@ -69,15 +71,8 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 - **Qwen3.5 tool calls parsed by `Qwen35ToolCallParser`** — `Sources/SwiftClawMLX/Qwen35ToolCallParser.swift` is a fallback that scans accumulated text for `<tool_call>` blocks when mlx-swift-lm doesn't emit native `.toolCall` events. `swift package update` is now safe — no checkout patches needed.
 - **Tool Arguments: accept string-encoded integers** — the Qwen3.5 XML parser passes all parameter values as strings. Tool `Arguments` structs with `Int?` fields need a custom `Decodable` that accepts both `Int` and numeric `String`. See `ProcessListTool` and `ShellTool` for the pattern.
 - **Qwen3.5 `<think>` blocks** — model streams reasoning content *without* an opening `<think>` tag; only `</think>` is emitted. Regex `<think>.*</think>` never matches. Filter: `if let r = text.range(of: "</think>") { text = String(text[r.upperBound...]) }` (in `ModelBackend` non-streaming extension).
-- **`swift package reset` xattr block** — macOS may set `com.apple.provenance` on `.build`, blocking `swift package reset`. Fix: `xattr -d com.apple.provenance .build` then retry.
-- **`.build/checkouts/` invisible to `ls`** — macOS privacy layer hides it. Use `find .build/checkouts -name "*.swift"` or `swift package show-dependencies` instead.
-- **`JSONSerialization` escapes `/`** — use `.withoutEscapingSlashes` option when the JSON string will be inspected or tested: `JSONSerialization.data(withJSONObject: obj, options: .withoutEscapingSlashes)`.
-- **`DirectoryEnumerator` in async** — `for case let item as String in enumerator` is a Swift 6 error ("makeIterator unavailable from asynchronous contexts"). Use `enumerator.allObjects.compactMap { $0 as? String }` instead.
-- **`TimeZone(identifier: "UTC").identifier` returns `"GMT"`** on macOS — tests checking for the literal string "UTC" will fail; accept either "UTC" or "GMT".
 - **`ToolCallFormat.json` is correct for Qwen3.5** — uses `<tool_call>{...}</tool_call>`. `.xmlFunction` is for Qwen3 **Coder** only. `ToolCallFormat.infer("qwen3_5")` returns nil, which correctly defaults to `.json`.
 - **Qwen3.5 tool calls — text-injection (verified 2026-03-05)** — passing `UserInput.tools` or any `<tool_call>` token in the system message triggers EOS-after-think (model stops generating after `</think>`). `enable_thinking: false` also fails — generates 0 tokens. Working fix: `toolSpecs = nil`, inject tool descriptions as plain text with `<function=NAME>` format (no `<tool_call>` token); `Qwen35ToolCallParser` handles bare `<function=...>` blocks; `ModelBackend` strips them from response text.
 - **Prefer `loadModelContainer(configuration:)`** over `loadModelContainer(id:)` — takes a `ModelConfiguration` so fields like `toolCallFormat` can be set before loading.
 - **`list_directory` doesn't expand `~`** — `FileManager` won't expand tilde in paths; model must pass absolute paths or use the `shell` tool with `ls ~/...` instead.
 - **E2E testing via piped stdin** — `echo "prompt"` closes stdin before the REPL reads it. Use `printf "prompt\n/quit\n" | .build/release/swiftclaw run` to include an explicit quit after the message.
-- **Swift 6: `if case let` in expression position fails** — `case let .x(v) = expr` is invalid in `if` guards. Use `if let first = messages.first, first.role == .system { ... }` (struct property access) instead.
-- **`[Data].joined(separator:)` returns `JoinedSequence`** — wrap with `Data(...)` to get a concrete `Data`: `Data(lines.joined(separator: Data("\n".utf8)))`.
