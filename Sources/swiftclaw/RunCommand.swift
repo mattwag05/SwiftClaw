@@ -146,6 +146,10 @@ struct RunCommand: AsyncParsableCommand {
                 }
                 continue
             }
+            if trimmed.hasPrefix("/") {
+                print("Unknown command. Type /help for available commands.")
+                continue
+            }
 
             do {
                 let events = await agentSession.respond(to: trimmed)
@@ -163,9 +167,13 @@ struct RunCommand: AsyncParsableCommand {
                     case let .turn(response):
                         if !response.content.isEmpty {
                             print(response.content)
+                        } else if response.toolCalls.isEmpty {
+                            fputs("\u{001B}[2m[empty response]\u{001B}[0m\n", stderr)
                         }
                     case .done:
                         print()
+                    case let .warning(msg):
+                        fputs("\u{001B}[33m[warning] \(msg)\u{001B}[0m\n", stderr)
                     }
                 }
                 // Auto-save after each complete turn

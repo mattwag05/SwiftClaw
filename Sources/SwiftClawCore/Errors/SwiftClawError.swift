@@ -1,6 +1,6 @@
 import Foundation
 
-public enum SwiftClawError: LocalizedError {
+public enum SwiftClawError: LocalizedError, Equatable {
     case modelLoadFailed(String)
     case generationFailed(String)
     case maxToolRoundTripsExceeded(Int)

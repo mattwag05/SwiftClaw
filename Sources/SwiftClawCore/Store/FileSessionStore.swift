@@ -22,7 +22,19 @@ public actor FileSessionStore: SessionStore {
         try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
     }
 
+    private func sanitize(sessionId: String) throws {
+        guard !sessionId.isEmpty,
+              sessionId.count <= 100,
+              !sessionId.contains("/"),
+              !sessionId.contains(".."),
+              !sessionId.contains("\0")
+        else {
+            throw SwiftClawError.storageError("Invalid session ID")
+        }
+    }
+
     public func save(sessionId: String, messages: [Message], metadata: SessionMetadata) async throws {
+        try sanitize(sessionId: sessionId)
         let record = SessionRecord(metadata: metadata, messages: messages)
         let data = try encoder.encode(record)
         let file = sessionsDir.appendingPathComponent("\(sessionId).json")
@@ -34,6 +46,7 @@ public actor FileSessionStore: SessionStore {
     }
 
     public func load(sessionId: String) async throws -> (messages: [Message], metadata: SessionMetadata) {
+        try sanitize(sessionId: sessionId)
         let file = sessionsDir.appendingPathComponent("\(sessionId).json")
         guard FileManager.default.fileExists(atPath: file.path) else {
             throw SwiftClawError.sessionNotFound(sessionId)
@@ -80,6 +93,7 @@ public actor FileSessionStore: SessionStore {
     }
 
     public func delete(sessionId: String) async throws {
+        try sanitize(sessionId: sessionId)
         let file = sessionsDir.appendingPathComponent("\(sessionId).json")
         guard FileManager.default.fileExists(atPath: file.path) else {
             throw SwiftClawError.sessionNotFound(sessionId)

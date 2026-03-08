@@ -273,3 +273,143 @@ struct MockBackend: ModelBackend {
         #expect(error.localizedDescription == expected)
     }
 }
+
+@Test func swiftClawErrorDescriptionsAdditional() {
+    let errors: [(SwiftClawError, String)] = [
+        (.httpRequestFailed(statusCode: 404, body: "not found"), "HTTP request failed (404): not found"),
+        (.sseParsingFailed("bad chunk"), "SSE parsing failed: bad chunk"),
+        (.sessionNotFound("my-session"), "Session not found: my-session"),
+        (.storageError("disk full"), "Storage error: disk full"),
+    ]
+    for (error, expected) in errors {
+        #expect(error.localizedDescription == expected)
+    }
+}
+
+// MARK: - Session Edge Case Tests
+
+@Test func sessionMaxToolRoundTripsEmitsWarningNotThrow() async throws {
+    // Backend always returns a tool call, never a final answer
+    let backend = MockBackend(responses: Array(repeating: GenerationResponse(
+        content: "",
+        toolCalls: [ToolCallRequest(id: "1", name: "echo", arguments: "{\"text\":\"loop\"}")],
+        finishReason: .toolCall
+    ), count: 20))
+
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "Test", tools: [EchoTool()], modelId: "mock"
+    ))
+
+    let sessionConfig = SessionConfiguration(maxToolRoundTrips: 2)
+    let session = Session(agent: agent, backend: backend, config: sessionConfig)
+
+    var gotWarning = false
+    var gotDone = false
+    var didThrow = false
+
+    do {
+        let events = await session.respond(to: "loop forever")
+        for try await event in events {
+            switch event {
+            case .warning:
+                gotWarning = true
+            case .done:
+                gotDone = true
+            default:
+                break
+            }
+        }
+    } catch {
+        didThrow = true
+    }
+
+    #expect(!didThrow, "Should not throw when max round-trips exceeded")
+    #expect(gotWarning, "Should emit .warning event")
+    #expect(gotDone, "Should emit .done event")
+}
+
+@Test func sessionMaxTotalMessagesPreservesSystemMessage() async throws {
+    let backend = MockBackend(responses: [
+        GenerationResponse(content: "Response", finishReason: .stop)
+    ])
+
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "System prompt here", tools: [], modelId: "mock"
+    ))
+
+    // Very tight limit to force trimming
+    let sessionConfig = SessionConfiguration(maxTotalMessages: 3)
+    let session = Session(agent: agent, backend: backend, config: sessionConfig)
+
+    // Send multiple prompts to build up history
+    for prompt in ["First", "Second", "Third"] {
+        let events = await session.respond(to: prompt)
+        for try await _ in events {}
+    }
+
+    let history = await session.conversationHistory
+    // System message must always be first
+    #expect(history.first?.role == .system)
+    #expect(history.first?.content == "System prompt here")
+    // Trimming happens before generating; the assistant response appends one more,
+    // so the final count is at most maxTotalMessages + 1.
+    #expect(history.count <= sessionConfig.maxTotalMessages + 1)
+}
+
+@Test func sessionEmptyResponseEmitsTurnAndDone() async throws {
+    let backend = MockBackend(responses: [
+        GenerationResponse(content: "", finishReason: .stop)
+    ])
+
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "Test", tools: [], modelId: "mock"
+    ))
+
+    let session = Session(agent: agent, backend: backend)
+    var gotTurn = false
+    var gotDone = false
+
+    let events = await session.respond(to: "hi")
+    for try await event in events {
+        switch event {
+        case .turn:
+            gotTurn = true
+        case .done:
+            gotDone = true
+        default:
+            break
+        }
+    }
+
+    #expect(gotTurn)
+    #expect(gotDone)
+}
+
+@Test func sessionSaveRestoreRoundTrip() async throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("swiftclaw-roundtrip-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let store = try FileSessionStore(baseDir: dir)
+
+    let backend = MockBackend(responses: [
+        GenerationResponse(content: "Hello!", finishReason: .stop)
+    ])
+    let agentConfig = AgentConfiguration(
+        name: "TestAgent", systemPrompt: "Be helpful.", tools: [], modelId: "mock"
+    )
+    let agent = Agent(configuration: agentConfig)
+    let session = Session(agent: agent, backend: backend, sessionId: "round-trip")
+
+    let events = await session.respond(to: "Hi there")
+    for try await _ in events {}
+
+    let metadata = SessionMetadata(agentName: "TestAgent", modelId: "mock")
+    try await session.save(to: store, metadata: metadata)
+
+    let loaded = try await store.load(sessionId: "round-trip")
+    #expect(loaded.messages.contains(where: { $0.content == "Hi there" }))
+    #expect(loaded.messages.contains(where: { $0.content == "Hello!" }))
+    #expect(loaded.metadata.agentName == "TestAgent")
+}

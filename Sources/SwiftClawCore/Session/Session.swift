@@ -90,20 +90,29 @@ public actor Session {
     ) async throws {
         messages.append(Message(role: .user, content: prompt))
 
-        // Trim oldest non-system messages if we've exceeded the history limit
+        // Trim oldest non-system messages if we've exceeded the history limit.
+        // Walk backwards from the trim point to avoid splitting a tool-call group
+        // (assistant message with tool calls + subsequent tool result messages).
         if messages.count > config.maxTotalMessages {
-            let systemMessages = messages.prefix(1)
-            let rest = messages.dropFirst()
             let keepCount = max(1, config.maxTotalMessages - 1)
-            messages = Array(systemMessages) + Array(rest.suffix(keepCount))
+            var trimmed = Array(messages.dropFirst().suffix(keepCount))
+            // If the trim point landed inside a tool-call group (assistant + its tool
+            // results), drop leading orphaned tool results to keep the history coherent.
+            // Guard: never trim all messages — keep at least the most recent one.
+            while trimmed.count > 1, trimmed.first?.role == .tool {
+                trimmed.removeFirst()
+            }
+            messages = [messages[0]] + trimmed
         }
 
+        var lastResponse = GenerationResponse(content: "", finishReason: .stop)
         for _ in 0..<config.maxToolRoundTrips {
             let response = try await backend.generate(
                 messages: messages,
                 tools: agent.toolRegistry.definitions,
                 config: agent.configuration.generationConfig
             )
+            lastResponse = response
 
             messages.append(Message(
                 role: .assistant,
@@ -114,6 +123,9 @@ public actor Session {
             // No tool calls — this is the final answer
             if response.toolCalls.isEmpty {
                 continuation.yield(.turn(response))
+                if response.finishReason == .length {
+                    continuation.yield(.warning("Response truncated — model hit token limit"))
+                }
                 continuation.yield(.done)
                 return
             }
@@ -134,7 +146,10 @@ public actor Session {
             // Loop back: LLM sees tool results and generates next turn
         }
 
-        throw SwiftClawError.maxToolRoundTripsExceeded(config.maxToolRoundTrips)
+        // Max round-trips reached: emit last response as partial answer + warning
+        continuation.yield(.turn(lastResponse))
+        continuation.yield(.warning("Exceeded max tool round-trips (\(config.maxToolRoundTrips))"))
+        continuation.yield(.done)
     }
 
     /// Current conversation history (read-only snapshot).

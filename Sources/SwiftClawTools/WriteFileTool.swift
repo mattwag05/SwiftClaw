@@ -49,14 +49,23 @@ public struct WriteFileTool: SwiftClawTool {
             return .failure("Content could not be encoded as UTF-8")
         }
 
-        // Atomic write via temp file
-        let tempURL = dir.appendingPathComponent(".\(url.lastPathComponent).swiftclaw-tmp")
-        do {
-            try data.write(to: tempURL, options: .atomic)
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
-        } catch {
-            try? FileManager.default.removeItem(at: tempURL)
-            return .failure("Write failed: \(error.localizedDescription)")
+        if FileManager.default.fileExists(atPath: url.path) {
+            // Existing file: atomic replace via temp file
+            let tempURL = dir.appendingPathComponent(".\(url.lastPathComponent).swiftclaw-tmp")
+            do {
+                try data.write(to: tempURL, options: .atomic)
+                _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+            } catch {
+                try? FileManager.default.removeItem(at: tempURL)
+                return .failure("Write failed: \(error.localizedDescription)")
+            }
+        } else {
+            // New file: direct atomic write
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                return .failure("Write failed: \(error.localizedDescription)")
+            }
         }
 
         return .success("Wrote \(data.count) bytes to \(resolved)")

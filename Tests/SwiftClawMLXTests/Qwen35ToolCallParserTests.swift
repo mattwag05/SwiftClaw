@@ -123,6 +123,54 @@ struct Qwen35ToolCallParserTests {
         #expect(!result.remainingText.contains("</tool_call>"))
     }
 
+    // MARK: - Bare <function=...> tests (text-injection format)
+
+    @Test("Bare function with no params (no outer tool_call)")
+    func bareFunctionNoParams() {
+        let text = "<function=date_time>\n</function>"
+        let result = Qwen35ToolCallParser.parse(text: text)
+        #expect(result.toolCalls.count == 1)
+        #expect(result.toolCalls[0].name == "date_time")
+        #expect(result.toolCalls[0].arguments == "{}")
+    }
+
+    @Test("Bare function with parameter")
+    func bareFunctionWithParameter() {
+        let text = "<function=shell>\n<parameter=command>ls</parameter>\n</function>"
+        let result = Qwen35ToolCallParser.parse(text: text)
+        #expect(result.toolCalls.count == 1)
+        #expect(result.toolCalls[0].name == "shell")
+        #expect(result.toolCalls[0].arguments.contains("\"command\""))
+        #expect(result.toolCalls[0].arguments.contains("ls"))
+    }
+
+    @Test("Mixed — text before and after a bare function block")
+    func bareFunctionMixed() {
+        let text = "Here is my answer:\n<function=date_time>\n</function>\nDone."
+        let result = Qwen35ToolCallParser.parse(text: text)
+        #expect(result.toolCalls.count == 1)
+        #expect(result.toolCalls[0].name == "date_time")
+        let remaining = result.remainingText
+        #expect(remaining.contains("Here is my answer"))
+        #expect(remaining.contains("Done."))
+        #expect(!remaining.contains("<function="))
+    }
+
+    @Test("Multiple bare function blocks in one text")
+    func multipleBareFunctions() {
+        let text = """
+        <function=date_time>
+        </function>
+        <function=shell>
+        <parameter=command>pwd</parameter>
+        </function>
+        """
+        let result = Qwen35ToolCallParser.parse(text: text)
+        #expect(result.toolCalls.count == 2)
+        #expect(result.toolCalls[0].name == "date_time")
+        #expect(result.toolCalls[1].name == "shell")
+    }
+
     @Test("Each tool call gets a unique ID")
     func uniqueIds() {
         let text = """

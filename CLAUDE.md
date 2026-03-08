@@ -80,3 +80,4 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 - **`list_directory` doesn't expand `~`** — `FileManager` won't expand tilde in paths; model must pass absolute paths or use the `shell` tool with `ls ~/...` instead.
 - **E2E testing via piped stdin** — `echo "prompt"` closes stdin before the REPL reads it. Use `printf "prompt\n/quit\n" | .build/release/swiftclaw run` to include an explicit quit after the message.
 - **Swift 6: `if case let` in expression position fails** — `case let .x(v) = expr` is invalid in `if` guards. Use `if let first = messages.first, first.role == .system { ... }` (struct property access) instead.
+- **`[Data].joined(separator:)` returns `JoinedSequence`** — wrap with `Data(...)` to get a concrete `Data`: `Data(lines.joined(separator: Data("\n".utf8)))`.
