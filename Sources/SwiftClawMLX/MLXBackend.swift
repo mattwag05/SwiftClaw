@@ -58,7 +58,7 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
             ? chatMessages
             : MLXToolBridge.injectToolsIntoSystemMessage(chatMessages, tools: tools)
 
-        Task { @Sendable in
+        let task = Task { @Sendable in
             do {
                 try await Self.runGeneration(
                     modelContainer: modelContainer,
@@ -70,6 +70,7 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
                 continuation.finish(throwing: SwiftClawError.generationFailed(error.localizedDescription))
             }
         }
+        continuation.onTermination = { _ in task.cancel() }
 
         return stream
     }

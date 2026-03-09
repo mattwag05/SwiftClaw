@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "SwiftClawTools", targets: ["SwiftClawTools"]),
         .library(name: "SwiftClawPippin", targets: ["SwiftClawPippin"]),
         .executable(name: "swiftclaw", targets: ["swiftclaw"]),
+        .executable(name: "SwiftClawApp", targets: ["SwiftClawApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
@@ -31,6 +32,9 @@ let package = Package(
         .executableTarget(name: "swiftclaw", dependencies: [
             "SwiftClawCore", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools", "SwiftClawPippin",
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
+        ]),
+        .executableTarget(name: "SwiftClawApp", dependencies: [
+            "SwiftClawCore", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools", "SwiftClawPippin",
         ]),
         .testTarget(name: "SwiftClawCoreTests", dependencies: ["SwiftClawCore"]),
         .testTarget(name: "SwiftClawHTTPTests", dependencies: ["SwiftClawHTTP"]),

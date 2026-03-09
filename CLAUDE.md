@@ -20,7 +20,12 @@ swift run swiftclaw tools          # List available tools
 .build/release/swiftclaw adapters list             # List trained adapters
 .build/release/swiftclaw adapters delete <name>    # Delete an adapter
 .build/release/swiftclaw run --adapter ~/.swiftclaw/adapters/<name>  # Run with LoRA adapter (MLX only)
-swift test                         # Run all tests (145 tests)
+.build/release/swiftclaw run --auto-adapter        # Auto-select best adapter by loss+recency
+.build/release/swiftclaw adapters tag <name> --add "coding,swift" --remove "old"
+.build/release/swiftclaw eval "prompt" --adapter-b <name>  # A/B eval (base vs adapter); prompts for winner [A/B/tie/skip]
+.build/release/swiftclaw eval "prompt" --adapter-a <n1> --adapter-b <n2>  # Adapter vs adapter A/B
+# Eval results saved to ~/.swiftclaw/evals/<epoch>.json
+swift test                         # Run all tests (159 tests)
 ```
 
 ## MLX Setup (one-time)
@@ -39,6 +44,8 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 - **SwiftClawMLX**: Concrete MLX backend using mlx-swift-lm (native, no Python)
   - `LoRATrainer`: trains adapters from JSONL session exports via MLXOptimizers; stored in `~/.swiftclaw/adapters/`
   - `AdapterStore`: adapter metadata and lifecycle management
+  - `AdapterSelector`: scores/selects adapters (tag overlap 60%, val loss 25%, recency 15%)
+  - `EvalStore`: persists A/B eval results to `~/.swiftclaw/evals/`
 - **SwiftClawHTTP**: OpenAI-compatible HTTP backend (Foundation-only, targets Ollama/OpenAI)
 - **SwiftClawTools**: Built-in tools (system info, disk, processes, shell, file ops, env/datetime/clipboard); `SwiftClawToolFactory.allTools(config:)` for registration
 - **SwiftClawPippin**: Pippin CLI wrappers (mail + memos); `PippinToolFactory.allTools()` returns empty if binary absent
@@ -82,3 +89,6 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 - **Prefer `loadModelContainer(configuration:)`** over `loadModelContainer(id:)` — takes a `ModelConfiguration` so fields like `toolCallFormat` can be set before loading.
 - **`list_directory` doesn't expand `~`** — `FileManager` won't expand tilde in paths; model must pass absolute paths or use the `shell` tool with `ls ~/...` instead.
 - **E2E testing via piped stdin** — `echo "prompt"` closes stdin before the REPL reads it. Use `printf "prompt\n/quit\n" | .build/release/swiftclaw run` to include an explicit quit after the message.
+- **`ISO8601DateFormatter` is not `Sendable`** — can't use as `static let` in a `Sendable` struct under Swift 6; use Unix timestamp strings or `nonisolated(unsafe)` if the instance is read-only after init.
+- **Test isolation pattern for stores** — use `init(param: URL? = nil)` where `nil` = real home dir and non-nil = test temp dir; matches `FileSessionStore(baseDir:)`. Don't add `__testInit` factory methods.
+- **`OutputFormatting.swift` is the shared CLI utility file** — add small `swiftclaw`-target helpers there (e.g. `col()`, `parseTags()`); it's the target's utils module.

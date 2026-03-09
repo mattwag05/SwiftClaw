@@ -69,18 +69,18 @@ public struct AdapterStore: Sendable {
 
     public let adaptersURL: URL
 
-    private static let decoder: JSONDecoder = {
+    private func makeDecoder() -> JSONDecoder {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
-    }()
+    }
 
-    private static let encoder: JSONEncoder = {
+    private func makeEncoder() -> JSONEncoder {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         e.outputFormatting = [.prettyPrinted, .sortedKeys]
         return e
-    }()
+    }
 
     public init(adaptersURL: URL? = nil) throws {
         if let adaptersURL {
@@ -112,7 +112,7 @@ public struct AdapterStore: Sendable {
         return entries.compactMap { url -> AdapterMetadata? in
             let metaURL = url.appending(path: "metadata.json")
             guard let data = try? Data(contentsOf: metaURL) else { return nil }
-            return try? Self.decoder.decode(AdapterMetadata.self, from: data)
+            return try? self.makeDecoder().decode(AdapterMetadata.self, from: data)
         }.sorted { $0.createdAt > $1.createdAt }
     }
 
@@ -122,7 +122,7 @@ public struct AdapterStore: Sendable {
         let metaURL = try adapterURL(name: name).appending(path: "metadata.json")
         do {
             let data = try Data(contentsOf: metaURL)
-            return try Self.decoder.decode(AdapterMetadata.self, from: data)
+            return try makeDecoder().decode(AdapterMetadata.self, from: data)
         } catch let error as SwiftClawError {
             throw error
         } catch {
@@ -135,7 +135,7 @@ public struct AdapterStore: Sendable {
     public func saveMetadata(_ metadata: AdapterMetadata) throws {
         let dir = try adapterURL(name: metadata.name)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let data = try Self.encoder.encode(metadata)
+        let data = try makeEncoder().encode(metadata)
         let metaURL = dir.appending(path: "metadata.json")
         try data.write(to: metaURL, options: .atomic)
     }

@@ -26,7 +26,7 @@ public struct HTTPBackend: ModelBackend {
         config: GenerationConfig
     ) -> AsyncThrowingStream<StreamChunk, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     try await stream(
                         messages: messages,
@@ -39,6 +39,7 @@ public struct HTTPBackend: ModelBackend {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

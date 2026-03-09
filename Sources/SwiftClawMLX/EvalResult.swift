@@ -41,13 +41,6 @@ public struct EvalStore: Sendable {
 
     public let evalsURL: URL
 
-    private static let encoder: JSONEncoder = {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        e.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return e
-    }()
-
     public init() throws {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let dir = home.appending(path: ".swiftclaw/evals", directoryHint: .isDirectory)
@@ -59,7 +52,10 @@ public struct EvalStore: Sendable {
         // Use Unix timestamp for filename — sortable, unique, no formatter needed.
         let ts = String(format: "%.3f", result.timestamp.timeIntervalSince1970)
         let filename = "eval-\(ts).json"
-        let data = try Self.encoder.encode(result)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(result)
         let url = evalsURL.appending(path: filename)
         try data.write(to: url, options: .atomic)
     }

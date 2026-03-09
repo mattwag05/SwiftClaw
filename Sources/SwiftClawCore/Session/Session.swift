@@ -11,6 +11,7 @@ public actor Session {
     private let backend: any ModelBackend
     private let config: SessionConfiguration
     public let sessionId: String?
+    private var isRunning: Bool = false
 
     /// Create a new session with a fresh conversation history.
     public init(
@@ -58,6 +59,15 @@ public actor Session {
         let backend = self.backend
         let config = self.config
 
+        if isRunning {
+            return AsyncThrowingStream { continuation in
+                continuation.yield(.warning("Already generating — please wait"))
+                continuation.yield(.done)
+                continuation.finish()
+            }
+        }
+        isRunning = true
+
         return AsyncThrowingStream { continuation in
             Task { [weak self] in
                 guard let self else {
@@ -72,8 +82,10 @@ public actor Session {
                         config: config,
                         continuation: continuation
                     )
+                    await self.setRunning(false)
                     continuation.finish()
                 } catch {
+                    await self.setRunning(false)
                     continuation.finish(throwing: error)
                 }
             }
@@ -151,6 +163,8 @@ public actor Session {
         continuation.yield(.warning("Exceeded max tool round-trips (\(config.maxToolRoundTrips))"))
         continuation.yield(.done)
     }
+
+    private func setRunning(_ value: Bool) { isRunning = value }
 
     /// Current conversation history (read-only snapshot).
     public var conversationHistory: [Message] {
