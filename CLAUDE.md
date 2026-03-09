@@ -92,3 +92,6 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 - **`ISO8601DateFormatter` is not `Sendable`** — can't use as `static let` in a `Sendable` struct under Swift 6; use Unix timestamp strings or `nonisolated(unsafe)` if the instance is read-only after init.
 - **Test isolation pattern for stores** — use `init(param: URL? = nil)` where `nil` = real home dir and non-nil = test temp dir; matches `FileSessionStore(baseDir:)`. Don't add `__testInit` factory methods.
 - **`OutputFormatting.swift` is the shared CLI utility file** — add small `swiftclaw`-target helpers there (e.g. `col()`, `parseTags()`); it's the target's utils module.
+- **Actor mutation from `Task { [weak self] }`** — can't mutate actor properties directly in a nonisolated closure. Use a private actor-isolated helper: `private func setX(_ v: T) { x = v }` called with `await self.setX(v)`.
+- **`AsyncThrowingStream` cancellation** — capture the backing `Task` and wire `continuation.onTermination = { _ in task.cancel() }` so dropping the stream cancels the underlying work.
+- **Cancel-then-await race** — `Task.cancel()` sets a flag but doesn't interrupt a suspended `for try await` loop immediately. Set UI state (e.g. `isGenerating = false`) eagerly at the cancel call site; don't rely on the async path to clear it.
