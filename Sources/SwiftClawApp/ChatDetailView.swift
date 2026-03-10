@@ -15,11 +15,22 @@ struct ChatDetailView: View {
                                 ChatBubbleView(bubble: bubble)
                                     .id(bubble.id)
                             }
+                            // Show streaming text while generating
+                            if viewModel.isGenerating && (!viewModel.streamingText.isEmpty || viewModel.isThinking) {
+                                StreamingTextView(
+                                    text: viewModel.streamingText,
+                                    isThinking: viewModel.isThinking
+                                )
+                                .id("streaming")
+                            }
                             Color.clear.frame(height: 1).id("bottom")
                         }
                         .padding()
                     }
                     .onChange(of: viewModel.messages.count) {
+                        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
+                    .onChange(of: viewModel.streamingText) {
                         withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
                 }

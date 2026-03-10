@@ -24,6 +24,8 @@ final class ChatViewModel {
     var isGenerating: Bool = false
     var backendState: BackendState = .idle
     var errorMessage: String? = nil
+    var streamingText: String = ""
+    var isThinking: Bool = false
 
     // MARK: Backend settings (persisted via AppStorage wrappers)
     var backendType: BackendType = .http
@@ -152,6 +154,11 @@ final class ChatViewModel {
     func cancelGeneration() {
         generationTask?.cancel()
         generationTask = nil
+        if !streamingText.isEmpty {
+            messages.append(ChatBubble(kind: .assistant(streamingText)))
+        }
+        streamingText = ""
+        isThinking = false
         isGenerating = false
     }
 
@@ -242,13 +249,16 @@ final class ChatViewModel {
             for try await event in stream {
                 if Task.isCancelled { break }
                 switch event {
-                case .textDelta:
-                    break // Streaming display handled in P2.3
+                case let .textDelta(text, thinking):
+                    streamingText += text
+                    isThinking = thinking
                 case let .toolCallStart(id, name):
                     messages.append(ChatBubble(kind: .toolCall(name: name, callId: id)))
                 case let .toolResult(id, result):
                     messages.append(ChatBubble(kind: .toolResult(content: result.content, isError: result.isError, callId: id)))
                 case let .turn(response):
+                    streamingText = ""
+                    isThinking = false
                     if !response.content.isEmpty {
                         messages.append(ChatBubble(kind: .assistant(response.content)))
                     }
@@ -264,11 +274,15 @@ final class ChatViewModel {
                 await refreshSessions()
             }
         } catch {
+            streamingText = ""
+            isThinking = false
             if !Task.isCancelled {
                 messages.append(ChatBubble(kind: .warning("Error: \(error.localizedDescription)")))
             }
         }
 
+        streamingText = ""
+        isThinking = false
         isGenerating = false
     }
 
