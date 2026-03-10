@@ -50,6 +50,7 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 - **SwiftClawTools**: Built-in tools (system info, disk, processes, shell, file ops, env/datetime/clipboard); `SwiftClawToolFactory.allTools(config:)` for registration
 - **SwiftClawPippin**: Pippin CLI wrappers (mail + memos); `PippinToolFactory.allTools()` returns empty if binary absent
 - **swiftclaw**: CLI executable (ArgumentParser)
+- **SwiftClawApp**: SwiftUI target — macOS app wrapper around SwiftClawCore; uses `@Observable` agent state; shares the same session store as the CLI
 
 ## Key Design Decisions
 
@@ -71,27 +72,38 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 
 ## Gotchas & Fixes
 
-- **macOS `ps` has no `--sort`** — use `/bin/ps -a -x -m -o pid,user,%cpu,%mem,command` (GNU flags don't work)
-- **Pipe deadlock with `Process`** — drain both pipes via `DispatchGroup` BEFORE `waitUntilExit()`; pipe buffer ~64KB
+### Swift 6 Concurrency
+
 - **GCD pipe vars under Swift 6** — mark with `nonisolated(unsafe)` when mutated inside `DispatchQueue.global().async`
 - **`Chat.Message` not Sendable** — use `@preconcurrency import MLXLMCommon` to downgrade error to warning
-- **`ToolSpec` is in `Tokenizers`** — add `import Tokenizers` (from swift-transformers, a transitive dep of mlx-swift-lm)
-- **`GenerateStopReason` has no `.toolCall`** — detect tool calls via `!collectedToolCalls.isEmpty`, not stop reason
-- **ShellSandbox redirect pattern** — use `">"` not `">{"`; plain `>` catches all redirect forms
-- **Use `ModelContainer` directly** — don't use `ChatSession`; SwiftClaw's `Session` actor owns the agentic loop
+- **`ISO8601DateFormatter` is not `Sendable`** — can't use as `static let` in a `Sendable` struct under Swift 6; use Unix timestamp strings or `nonisolated(unsafe)` if the instance is read-only after init.
+- **Actor mutation from `Task { [weak self] }`** — can't mutate actor properties directly in a nonisolated closure. Use a private actor-isolated helper: `private func setX(_ v: T) { x = v }` called with `await self.setX(v)`.
+- **`AsyncThrowingStream` cancellation** — capture the backing `Task` and wire `continuation.onTermination = { _ in task.cancel() }` so dropping the stream cancels the underlying work.
+- **Cancel-then-await race** — `Task.cancel()` sets a flag but doesn't interrupt a suspended `for try await` loop immediately. Set UI state (e.g. `isGenerating = false`) eagerly at the cancel call site; don't rely on the async path to clear it.
+
+### MLX & Model Loading
+
 - **MLX requires release binary + colocated metallib** — `swift run` / debug builds fail with "Failed to load the default metallib". Must: (1) `swift build -c release`, (2) `cp <mlx.metallib> .build/release/`. Get metallib via `pip install --target /tmp/mlx-metallib mlx==<version>` where version matches `mlx-swift` in Package.resolved.
 - **Model cache is `~/Library/Caches/models/<org>/<model>`** — e.g. `~/Library/Caches/models/mlx-community/Qwen3.5-9B-MLX-4bit`. Doctor checks this path directly (NOT HuggingFace's `models--` format).
+- **Prefer `loadModelContainer(configuration:)`** over `loadModelContainer(id:)` — takes a `ModelConfiguration` so fields like `toolCallFormat` can be set before loading.
+- **Use `ModelContainer` directly** — don't use `ChatSession`; SwiftClaw's `Session` actor owns the agentic loop.
+- **`ToolSpec` is in `Tokenizers`** — add `import Tokenizers` (from swift-transformers, a transitive dep of mlx-swift-lm)
+- **`GenerateStopReason` has no `.toolCall`** — detect tool calls via `!collectedToolCalls.isEmpty`, not stop reason.
+
+### Qwen3.5 Model
+
 - **Qwen3.5 tool calls parsed by `Qwen35ToolCallParser`** — `Sources/SwiftClawMLX/Qwen35ToolCallParser.swift` is a fallback that scans accumulated text for `<tool_call>` blocks when mlx-swift-lm doesn't emit native `.toolCall` events. `swift package update` is now safe — no checkout patches needed.
 - **Tool Arguments: accept string-encoded integers** — the Qwen3.5 XML parser passes all parameter values as strings. Tool `Arguments` structs with `Int?` fields need a custom `Decodable` that accepts both `Int` and numeric `String`. See `ProcessListTool` and `ShellTool` for the pattern.
 - **Qwen3.5 `<think>` blocks** — model streams reasoning content *without* an opening `<think>` tag; only `</think>` is emitted. Regex `<think>.*</think>` never matches. Filter: `if let r = text.range(of: "</think>") { text = String(text[r.upperBound...]) }` (in `ModelBackend` non-streaming extension).
 - **`ToolCallFormat.json` is correct for Qwen3.5** — uses `<tool_call>{...}</tool_call>`. `.xmlFunction` is for Qwen3 **Coder** only. `ToolCallFormat.infer("qwen3_5")` returns nil, which correctly defaults to `.json`.
 - **Qwen3.5 tool calls — text-injection (verified 2026-03-05)** — passing `UserInput.tools` or any `<tool_call>` token in the system message triggers EOS-after-think (model stops generating after `</think>`). `enable_thinking: false` also fails — generates 0 tokens. Working fix: `toolSpecs = nil`, inject tool descriptions as plain text with `<function=NAME>` format (no `<tool_call>` token); `Qwen35ToolCallParser` handles bare `<function=...>` blocks; `ModelBackend` strips them from response text.
-- **Prefer `loadModelContainer(configuration:)`** over `loadModelContainer(id:)` — takes a `ModelConfiguration` so fields like `toolCallFormat` can be set before loading.
-- **`list_directory` doesn't expand `~`** — `FileManager` won't expand tilde in paths; model must pass absolute paths or use the `shell` tool with `ls ~/...` instead.
+
+### Testing & Tools
+
+- **macOS `ps` has no `--sort`** — use `/bin/ps -a -x -m -o pid,user,%cpu,%mem,command` (GNU flags don't work)
+- **Pipe deadlock with `Process`** — drain both pipes via `DispatchGroup` BEFORE `waitUntilExit()`; pipe buffer ~64KB
+- **ShellSandbox redirect pattern** — use `">"` not `">{"`; plain `>` catches all redirect forms
 - **E2E testing via piped stdin** — `echo "prompt"` closes stdin before the REPL reads it. Use `printf "prompt\n/quit\n" | .build/release/swiftclaw run` to include an explicit quit after the message.
-- **`ISO8601DateFormatter` is not `Sendable`** — can't use as `static let` in a `Sendable` struct under Swift 6; use Unix timestamp strings or `nonisolated(unsafe)` if the instance is read-only after init.
 - **Test isolation pattern for stores** — use `init(param: URL? = nil)` where `nil` = real home dir and non-nil = test temp dir; matches `FileSessionStore(baseDir:)`. Don't add `__testInit` factory methods.
 - **`OutputFormatting.swift` is the shared CLI utility file** — add small `swiftclaw`-target helpers there (e.g. `col()`, `parseTags()`); it's the target's utils module.
-- **Actor mutation from `Task { [weak self] }`** — can't mutate actor properties directly in a nonisolated closure. Use a private actor-isolated helper: `private func setX(_ v: T) { x = v }` called with `await self.setX(v)`.
-- **`AsyncThrowingStream` cancellation** — capture the backing `Task` and wire `continuation.onTermination = { _ in task.cancel() }` so dropping the stream cancels the underlying work.
-- **Cancel-then-await race** — `Task.cancel()` sets a flag but doesn't interrupt a suspended `for try await` loop immediately. Set UI state (e.g. `isGenerating = false`) eagerly at the cancel call site; don't rely on the async path to clear it.
+- **`list_directory` doesn't expand `~`** — `FileManager` won't expand tilde in paths; model must pass absolute paths or use the `shell` tool with `ls ~/...` instead.
