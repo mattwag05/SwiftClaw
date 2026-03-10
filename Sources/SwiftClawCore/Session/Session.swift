@@ -119,10 +119,72 @@ public actor Session {
 
         var lastResponse = GenerationResponse(content: "", finishReason: .stop)
         for _ in 0..<config.maxToolRoundTrips {
-            let response = try await backend.generate(
+            let stream: AsyncThrowingStream<StreamChunk, Error> = backend.generate(
                 messages: messages,
                 tools: agent.toolRegistry.definitions,
                 config: agent.configuration.generationConfig
+            )
+
+            var accumulatedText = ""
+            var collectedToolCalls: [ToolCallRequest] = []
+            var streamFinishReason: StreamChunk.FinishReason = .stop
+            var seenEndThink = false
+
+            for try await chunk in stream {
+                if Task.isCancelled { break }
+
+                if let text = chunk.text {
+                    accumulatedText += text
+
+                    // Track <think> state: Qwen3.5 omits opening <think>, only emits </think>
+                    if !seenEndThink, accumulatedText.contains("</think>") {
+                        seenEndThink = true
+                    }
+
+                    continuation.yield(.textDelta(text, isThinking: !seenEndThink))
+                }
+
+                if let tools = chunk.toolCalls {
+                    collectedToolCalls.append(contentsOf: tools)
+                }
+
+                if let reason = chunk.finishReason {
+                    streamFinishReason = reason
+                }
+            }
+
+            // Strip <think> blocks from accumulated text
+            var cleanedText = accumulatedText
+            if let r = cleanedText.range(of: "</think>") {
+                cleanedText = String(cleanedText[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if let r = cleanedText.range(of: "<think>[\\s\\S]*$", options: .regularExpression) {
+                cleanedText = String(cleanedText[..<r.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            // Strip tool call XML from text
+            if cleanedText.contains("<tool_call>") {
+                cleanedText = cleanedText.replacingOccurrences(
+                    of: "<tool_call>[\\s\\S]*?</tool_call>",
+                    with: "",
+                    options: .regularExpression
+                )
+            }
+            if cleanedText.contains("<function=") {
+                cleanedText = cleanedText.replacingOccurrences(
+                    of: "<function=[\\s\\S]*?</function>",
+                    with: "",
+                    options: .regularExpression
+                )
+            }
+            cleanedText = cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let mappedFinishReason: StreamChunk.FinishReason = collectedToolCalls.isEmpty
+                ? (streamFinishReason == .length ? .length : .stop)
+                : .toolCall
+            let response = GenerationResponse(
+                content: cleanedText,
+                toolCalls: collectedToolCalls,
+                finishReason: mappedFinishReason
             )
             lastResponse = response
 

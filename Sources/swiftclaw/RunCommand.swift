@@ -177,6 +177,11 @@ struct RunCommand: AsyncParsableCommand {
                 let events = await agentSession.respond(to: trimmed)
                 for try await event in events {
                     switch event {
+                    case let .textDelta(text, isThinking):
+                        if !isThinking {
+                            print(text, terminator: "")
+                            fflush(stdout)
+                        }
                     case let .toolCallStart(_, name):
                         print("\n[calling \(name)...]", terminator: "")
                         fflush(stdout)

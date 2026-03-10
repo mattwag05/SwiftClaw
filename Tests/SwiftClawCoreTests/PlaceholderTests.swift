@@ -259,6 +259,30 @@ struct MockBackend: ModelBackend {
     #expect(finalText == "Echo said: world")
 }
 
+@Test func sessionEmitsTextDeltaEvents() async throws {
+    let backend = MockBackend(responses: [
+        GenerationResponse(content: "Hello, world!", finishReason: .stop)
+    ])
+
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "Test", tools: [], modelId: "mock"
+    ))
+
+    let session = Session(agent: agent, backend: backend)
+    var deltas: [String] = []
+
+    let events = await session.respond(to: "Hi")
+    for try await event in events {
+        if case let .textDelta(text, _) = event {
+            deltas.append(text)
+        }
+    }
+
+    // MockBackend emits the full content as a single chunk, so we get one delta
+    #expect(!deltas.isEmpty)
+    #expect(deltas.joined() == "Hello, world!")
+}
+
 // MARK: - Error Tests
 
 @Test func swiftClawErrorDescriptions() {

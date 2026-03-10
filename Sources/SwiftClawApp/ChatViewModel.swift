@@ -242,6 +242,8 @@ final class ChatViewModel {
             for try await event in stream {
                 if Task.isCancelled { break }
                 switch event {
+                case .textDelta:
+                    break // Streaming display handled in P2.3
                 case let .toolCallStart(id, name):
                     messages.append(ChatBubble(kind: .toolCall(name: name, callId: id)))
                 case let .toolResult(id, result):
