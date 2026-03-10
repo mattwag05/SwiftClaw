@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Semantic design tokens for SwiftClawUI.
 /// All values use system colors and adapt to light/dark mode automatically.
