@@ -6,33 +6,7 @@ import SwiftClawHTTP
 import SwiftClawMLX
 import SwiftClawTools
 import SwiftClawPippin
-
-// MARK: - Supporting Types
-
-struct ChatBubble: Identifiable, Sendable {
-    let id = UUID()
-    let kind: Kind
-
-    enum Kind: Sendable {
-        case user(String)
-        case assistant(String)
-        case toolCall(name: String, callId: String)
-        case toolResult(content: String, isError: Bool, callId: String)
-        case warning(String)
-    }
-}
-
-enum BackendType: String, CaseIterable {
-    case mlx = "MLX (On-Device)"
-    case http = "HTTP (Ollama / OpenAI)"
-}
-
-enum BackendState: Equatable {
-    case idle
-    case loading(Double)   // 0.0 – 1.0
-    case ready
-    case error(String)
-}
+import SwiftClawUI
 
 // MARK: - ChatViewModel
 
@@ -63,6 +37,9 @@ final class ChatViewModel {
     var adapters: [AdapterMetadata] = []
     var selectedAdapter: String? = nil
     var autoAdapter: Bool = false
+
+    // MARK: Memory settings
+    var memoryEnabled: Bool = true
 
     // MARK: Private state
     private var session: Session? = nil
