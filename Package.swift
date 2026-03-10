@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "SwiftClawHTTP", targets: ["SwiftClawHTTP"]),
         .library(name: "SwiftClawTools", targets: ["SwiftClawTools"]),
         .library(name: "SwiftClawPippin", targets: ["SwiftClawPippin"]),
+        .library(name: "SwiftClawUI", targets: ["SwiftClawUI"]),
         .executable(name: "swiftclaw", targets: ["swiftclaw"]),
         .executable(name: "SwiftClawApp", targets: ["SwiftClawApp"]),
     ],
@@ -29,12 +30,13 @@ let package = Package(
         ]),
         .target(name: "SwiftClawTools", dependencies: ["SwiftClawCore"]),
         .target(name: "SwiftClawPippin", dependencies: ["SwiftClawCore"]),
+        .target(name: "SwiftClawUI", dependencies: ["SwiftClawCore"]),
         .executableTarget(name: "swiftclaw", dependencies: [
             "SwiftClawCore", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools", "SwiftClawPippin",
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
         ]),
         .executableTarget(name: "SwiftClawApp", dependencies: [
-            "SwiftClawCore", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools", "SwiftClawPippin",
+            "SwiftClawCore", "SwiftClawUI", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools", "SwiftClawPippin",
         ]),
         .testTarget(name: "SwiftClawCoreTests", dependencies: ["SwiftClawCore"]),
         .testTarget(name: "SwiftClawHTTPTests", dependencies: ["SwiftClawHTTP"]),
