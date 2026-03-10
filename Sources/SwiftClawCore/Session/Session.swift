@@ -69,7 +69,7 @@ public actor Session {
         isRunning = true
 
         return AsyncThrowingStream { continuation in
-            Task { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish(throwing: SwiftClawError.sessionClosed)
                     return
@@ -89,6 +89,7 @@ public actor Session {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -136,12 +137,26 @@ public actor Session {
                 if let text = chunk.text {
                     accumulatedText += text
 
-                    // Track <think> state: Qwen3.5 omits opening <think>, only emits </think>
-                    if !seenEndThink, accumulatedText.contains("</think>") {
-                        seenEndThink = true
+                    if !seenEndThink {
+                        if let thinkEnd = accumulatedText.range(of: "</think>") {
+                            seenEndThink = true
+                            // Emit only the suffix after </think>, trimmed
+                            let suffix = String(accumulatedText[thinkEnd.upperBound...])
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !suffix.isEmpty {
+                                continuation.yield(.textDelta(suffix, isThinking: false))
+                            }
+                        } else if accumulatedText.count > 2000 {
+                            // Fallback: assume no thinking block after 2000 chars (non-thinking models)
+                            seenEndThink = true
+                            continuation.yield(.textDelta(text, isThinking: false))
+                        } else {
+                            // Still in thinking: signal UI to show indicator (empty text)
+                            continuation.yield(.textDelta("", isThinking: true))
+                        }
+                    } else {
+                        continuation.yield(.textDelta(text, isThinking: false))
                     }
-
-                    continuation.yield(.textDelta(text, isThinking: !seenEndThink))
                 }
 
                 if let tools = chunk.toolCalls {

@@ -174,13 +174,15 @@ struct RunCommand: AsyncParsableCommand {
             }
 
             do {
+                var receivedAnyDelta = false
                 let events = await agentSession.respond(to: trimmed)
                 for try await event in events {
                     switch event {
                     case let .textDelta(text, isThinking):
-                        if !isThinking {
+                        if !isThinking && !text.isEmpty {
                             print(text, terminator: "")
                             fflush(stdout)
+                            receivedAnyDelta = true
                         }
                     case let .toolCallStart(_, name):
                         print("\n[calling \(name)...]", terminator: "")
@@ -192,7 +194,9 @@ struct RunCommand: AsyncParsableCommand {
                             print(" done.")
                         }
                     case let .turn(response):
-                        if !response.content.isEmpty {
+                        if receivedAnyDelta {
+                            print()  // newline after streamed content
+                        } else if !response.content.isEmpty {
                             print(response.content)
                         } else if response.toolCalls.isEmpty {
                             fputs("\u{001B}[2m[empty response]\u{001B}[0m\n", stderr)
