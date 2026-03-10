@@ -1,10 +1,6 @@
 import SwiftUI
 import SwiftClawCore
 
-extension SessionSummary: Identifiable {
-    public var id: String { sessionId }
-}
-
 public struct SessionListView: View {
     public let sessions: [SessionSummary]
     @Binding public var selectedId: String?

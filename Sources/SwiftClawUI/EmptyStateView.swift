@@ -24,7 +24,6 @@ public struct EmptyStateView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Start a new chat")
         }
         .padding(40)

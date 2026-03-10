@@ -39,7 +39,7 @@ public struct BackendStatusView: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.green)
                 .font(.caption)
-        case .error:
+        case .error(_):
             Image(systemName: "exclamationmark.triangle.fill")
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.red)
@@ -54,7 +54,7 @@ public struct BackendStatusView: View {
         case .ready:
             let shortModel = modelId.components(separatedBy: "/").last ?? modelId
             return backendType == .mlx ? "On-Device · \(shortModel)" : shortModel
-        case .error: return "Error"
+        case .error(_): return "Error"
         }
     }
 }

@@ -10,13 +10,16 @@ public struct ModelLoadingOverlay: View {
         ZStack {
             Color(nsColor: .windowBackgroundColor).opacity(0.85)
             VStack(spacing: 16) {
-                ProgressView(value: progress > 0 ? progress : nil)
-                    .progressViewStyle(.circular)
-                    .scaleEffect(1.5)
                 if progress > 0 {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .frame(width: 200)
                     Text("Loading model… \(Int(progress * 100))%")
                         .font(.headline)
                 } else {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(1.5)
                     Text("Loading model…")
                         .font(.headline)
                 }

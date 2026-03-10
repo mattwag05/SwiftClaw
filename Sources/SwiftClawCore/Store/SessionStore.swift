@@ -16,7 +16,9 @@ public struct SessionMetadata: Codable, Sendable {
 }
 
 /// Summary entry for listing sessions.
-public struct SessionSummary: Codable, Sendable {
+public struct SessionSummary: Codable, Sendable, Identifiable {
+    public var id: String { sessionId }
+
     public let sessionId: String
     public let agentName: String
     public let messageCount: Int

@@ -26,7 +26,7 @@ public struct InputBarView: View {
                 .lineLimit(1...5)
                 .textFieldStyle(.plain)
                 .focused($focused)
-                .onSubmit { onSend() }
+                .onSubmit { if !isGenerating { onSend() } }
                 .padding(Theme.inputPadding)
                 .background(Theme.inputBackground, in: RoundedRectangle(cornerRadius: Theme.inputCornerRadius))
 
