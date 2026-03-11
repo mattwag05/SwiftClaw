@@ -13,6 +13,8 @@ public enum SwiftClawError: LocalizedError, Equatable {
     case trainingFailed(String)
     case adapterNotFound(String)
     case insufficientTrainingData(String)
+    case consolidationFailed(String)
+    case compressionFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -40,6 +42,10 @@ public enum SwiftClawError: LocalizedError, Equatable {
             "Adapter not found: \(name)"
         case let .insufficientTrainingData(detail):
             "Insufficient training data: \(detail)"
+        case let .consolidationFailed(detail):
+            "Memory consolidation failed: \(detail)"
+        case let .compressionFailed(detail):
+            "Context compression failed: \(detail)"
         }
     }
 }

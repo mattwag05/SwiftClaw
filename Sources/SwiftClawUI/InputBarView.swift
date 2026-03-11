@@ -21,14 +21,22 @@ public struct InputBarView: View {
     }
 
     public var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: 10) {
             TextField("Ask anything…", text: $text, axis: .vertical)
                 .lineLimit(1...5)
                 .textFieldStyle(.plain)
                 .focused($focused)
                 .onSubmit { if !isGenerating { onSend() } }
-                .padding(Theme.inputPadding)
-                .background(Theme.inputBackground, in: RoundedRectangle(cornerRadius: Theme.inputCornerRadius))
+                .padding(.horizontal, Theme.inputPadding + 2)
+                .padding(.vertical, Theme.inputPadding)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.inputCornerRadius)
+                        .fill(Theme.inputBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.inputCornerRadius)
+                                .strokeBorder(Theme.separatorColor, lineWidth: 1)
+                        )
+                )
 
             if isGenerating {
                 Button(action: onStop) {
@@ -53,7 +61,8 @@ public struct InputBarView: View {
                 .accessibilityLabel("Send message")
             }
         }
-        .padding(Theme.containerPadding)
+        .padding(.horizontal, Theme.containerPadding)
+        .padding(.vertical, 10)
         .onAppear { focused = true }
     }
 }

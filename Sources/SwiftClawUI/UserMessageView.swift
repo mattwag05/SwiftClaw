@@ -10,7 +10,8 @@ public struct UserMessageView: View {
             Spacer(minLength: Theme.bubbleMinSpacing)
             Text(text)
                 .textSelection(.enabled)
-                .padding(Theme.bubblePadding)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 9)
                 .background(Theme.userBubbleBackground, in: RoundedRectangle(cornerRadius: Theme.bubbleCornerRadius))
                 .foregroundStyle(Theme.userBubbleForeground)
         }

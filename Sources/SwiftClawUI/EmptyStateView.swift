@@ -7,18 +7,22 @@ public struct EmptyStateView: View {
 
     public var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 64))
+            Image(systemName: "bird")
+                .font(.system(size: 52))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-            Text("Start a Conversation")
-                .font(.title2)
-                .fontWeight(.semibold)
-            Text("Ask anything — SwiftClaw has tools for system info, files, shell commands, and more.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
+                .foregroundStyle(Theme.brandBlue)
+
+            VStack(spacing: 6) {
+                Text("START A CONVERSATION")
+                    .font(Theme.monoLabelFont)
+                    .foregroundStyle(Theme.primaryForeground)
+                Text("Ask anything — SwiftClaw has tools for system info,\nfiles, shell commands, and more.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 340)
+            }
+
             Button("New Chat") {
                 onNewChat()
             }

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftClawUI
+import SwiftClawCore
 
 struct ContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
@@ -12,26 +13,36 @@ struct ContentView: View {
                 selectedId: $vm.selectedSessionId,
                 onDelete: { id in Task { await viewModel.deleteSession(id: id) } }
             )
+            .onChange(of: viewModel.selectedSessionId) { _, newId in
+                guard let id = newId else { return }
+                Task { await viewModel.selectSession(id: id) }
+            }
             .navigationTitle("Chats")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task { await viewModel.newChat() }
                     } label: {
-                        Label("New Chat", systemImage: "plus.bubble")
+                        Image(systemName: "square.and.pencil")
                     }
                     .accessibilityLabel("Start new chat")
                 }
-            }
-            .onChange(of: viewModel.selectedSessionId) { _, newId in
-                guard let id = newId else { return }
-                Task { await viewModel.selectSession(id: id) }
             }
         } detail: {
             if viewModel.selectedSessionId != nil || !viewModel.messages.isEmpty {
                 ChatDetailView()
             } else {
                 EmptyStateView(onNewChat: { Task { await viewModel.newChat() } })
+                    .navigationTitle("SwiftClaw")
+                    .toolbar {
+                        ToolbarItem(placement: .automatic) {
+                            BackendStatusView(
+                                backendType: viewModel.backendType,
+                                modelId: viewModel.modelId,
+                                state: viewModel.backendState
+                            )
+                        }
+                    }
             }
         }
         .alert("Error", isPresented: Binding(

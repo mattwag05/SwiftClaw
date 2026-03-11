@@ -6,8 +6,15 @@ public protocol SwiftClawTool: Sendable {
     var name: String { get }
     var description: String { get }
     var parameterSchema: JSONSchema { get }
+    /// Whether this tool requires explicit user approval before executing.
+    /// Defaults to `false` — tools override to `true` for destructive operations.
+    var requiresConfirmation: Bool { get }
 
     func execute(arguments: String) async throws -> ToolResult
+}
+
+extension SwiftClawTool {
+    public var requiresConfirmation: Bool { false }
 }
 
 extension SwiftClawTool {

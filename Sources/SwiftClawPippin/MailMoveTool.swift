@@ -4,6 +4,7 @@ import SwiftClawCore
 /// Moves mail messages to a different mailbox via `pippin mail move`.
 public struct MailMoveTool: SwiftClawTool {
     public let name = "mail_move"
+    public let requiresConfirmation = true
     public let description =
         "Move one or more mail messages to a different mailbox using pippin."
 

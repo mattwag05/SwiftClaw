@@ -7,18 +7,18 @@ public struct SessionRowView: View {
     public init(summary: SessionSummary) { self.summary = summary }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Label(
-                summary.preview.isEmpty ? "New chat" : summary.preview,
-                systemImage: "bubble.left.and.bubble.right"
-            )
-            .lineLimit(1)
-            .font(Theme.bodyFont)
-            Text(summary.updatedAt, style: .relative)
-                .font(Theme.captionFont)
-                .foregroundStyle(Theme.secondaryForeground)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(summary.preview.isEmpty ? "New chat" : summary.preview)
+                    .lineLimit(1)
+                    .font(Theme.bodyFont)
+                    .foregroundStyle(Theme.primaryForeground)
+                Text(summary.updatedAt, style: .relative)
+                    .font(Theme.monoFont)
+                    .foregroundStyle(Theme.secondaryForeground)
+            }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
         .accessibilityLabel(summary.preview.isEmpty ? "New chat" : summary.preview)
     }
 }

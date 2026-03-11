@@ -1,0 +1,48 @@
+<h2>Phase 4: Streaming + Polish — What should the typing experience feel like?</h2>
+<p class="subtitle">The assistant's response will arrive token-by-token. How should it render?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Instant append (Recommended)</h3>
+      <p>Each token appears immediately as it arrives — like ChatGPT/Claude.ai. The text grows character-by-character with no animation. A blinking cursor (▌) at the end indicates generation is in progress. Simple, fast, familiar.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Preview</div>
+        <div class="mockup-body" style="font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6; padding: 16px;">
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <span style="opacity:0.5">🤖</span>
+            <div>
+              <span>The capital of France is Paris. It's known for the Eiff</span><span style="animation: blink 1s step-end infinite; font-weight:bold">▌</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Typewriter effect</h3>
+      <p>Tokens arrive and render with a subtle fade-in animation. Smoother visually but adds complexity and slight latency. Can feel sluggish on fast backends.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Preview</div>
+        <div class="mockup-body" style="font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6; padding: 16px;">
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <span style="opacity:0.5">🤖</span>
+            <div>
+              <span>The capital of France is Paris. It's known for </span><span style="opacity:0.7;transition:opacity 0.15s">the Eiffel</span><span style="opacity:0.3;transition:opacity 0.15s"> Tower</span><span style="animation: blink 1s step-end infinite; font-weight:bold">▌</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes blink {
+  50% { opacity: 0; }
+}
+</style>

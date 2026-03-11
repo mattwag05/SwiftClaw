@@ -1,0 +1,63 @@
+<h2>Thinking Indicator</h2>
+<p class="subtitle">While the model processes before the first token arrives, what should the user see?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Pulsing dots (Recommended)</h3>
+      <p>Three animated dots in the assistant bubble area — the standard chat convention. Replaced by actual text when the first token arrives.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Preview</div>
+        <div class="mockup-body" style="font-family: -apple-system, sans-serif; font-size: 14px; padding: 16px;">
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <span style="opacity:0.5">🤖</span>
+            <div style="display:flex;gap:4px;padding:8px 0">
+              <span style="width:8px;height:8px;border-radius:50%;background:#888;animation:pulse 1.4s infinite;animation-delay:0s;display:inline-block"></span>
+              <span style="width:8px;height:8px;border-radius:50%;background:#888;animation:pulse 1.4s infinite;animation-delay:0.2s;display:inline-block"></span>
+              <span style="width:8px;height:8px;border-radius:50%;background:#888;animation:pulse 1.4s infinite;animation-delay:0.4s;display:inline-block"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Spinner with label</h3>
+      <p>A small ProgressView spinner with "Thinking..." text. More explicit, slightly more space.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Preview</div>
+        <div class="mockup-body" style="font-family: -apple-system, sans-serif; font-size: 14px; padding: 16px;">
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="opacity:0.5">🤖</span>
+            <div style="display:flex;align-items:center;gap:6px;color:#888;font-size:13px">
+              <span style="display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:#888;border-radius:50%;animation:spin 0.8s linear infinite"></span>
+              Thinking...
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>No indicator</h3>
+      <p>Just wait — text starts appearing when it's ready. Minimal but the user doesn't know if anything is happening.</p>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>

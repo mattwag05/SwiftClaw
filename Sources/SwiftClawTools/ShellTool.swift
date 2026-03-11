@@ -4,6 +4,7 @@ import SwiftClawCore
 /// Executes sandboxed shell commands with an allowlist and timeout.
 public struct ShellTool: SwiftClawTool {
     public let name = "shell"
+    public let requiresConfirmation = true
     public let description =
         "Run a sandboxed shell command. Only allowlisted commands are permitted (ls, cat, grep, df, ps, uptime, etc). No pipes, redirects, or chaining."
 

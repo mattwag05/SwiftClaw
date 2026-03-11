@@ -4,6 +4,7 @@ import SwiftClawCore
 /// Sends an email via `pippin mail send`. CAUTION: sends real email.
 public struct MailSendTool: SwiftClawTool {
     public let name = "mail_send"
+    public let requiresConfirmation = true
     public let description =
         "Send an email using pippin. CAUTION: this sends a real email immediately. Requires confirmation from the user before use."
 

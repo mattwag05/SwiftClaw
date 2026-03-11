@@ -4,6 +4,7 @@ import SwiftClawCore
 /// Marks mail messages as read/unread via `pippin mail mark`.
 public struct MailMarkTool: SwiftClawTool {
     public let name = "mail_mark"
+    public let requiresConfirmation = true
     public let description =
         "Mark one or more mail messages as read or unread using pippin."
 

@@ -12,6 +12,8 @@ struct SettingsView: View {
                 .tabItem { Label("Adapters", systemImage: "cpu") }
             MemorySettingsTab()
                 .tabItem { Label("Memory", systemImage: "brain") }
+            ToolsSettingsTab()
+                .tabItem { Label("Tools", systemImage: "wrench.and.screwdriver") }
         }
         .frame(width: 520, height: 360)
         .padding()
@@ -88,6 +90,34 @@ struct AdaptersSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+struct ToolsSettingsTab: View {
+    @Environment(ChatViewModel.self) private var viewModel
+
+    var body: some View {
+        @Bindable var vm = viewModel
+        Form {
+            Section("Require Approval") {
+                if viewModel.toolApprovalOverrides.isEmpty {
+                    Text("Start a chat to load tools.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.toolApprovalOverrides.keys.sorted(), id: \.self) { name in
+                        Toggle(name, isOn: Binding(
+                            get: { viewModel.toolApprovalOverrides[name] ?? false },
+                            set: { vm.toolApprovalOverrides[name] = $0 }
+                        ))
+                    }
+                }
+            }
+            Text("Dangerous tools require approval by default. Toggle to override.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
     }

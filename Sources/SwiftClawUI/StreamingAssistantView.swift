@@ -15,42 +15,37 @@ public struct StreamingAssistantView: View {
     }
 
     public var body: some View {
-        HStack(alignment: .top) {
-            Image(systemName: "cpu.fill")
-                .symbolRenderingMode(.hierarchical)
+        HStack(alignment: .top, spacing: 10) {
+            Text("AI")
+                .font(Theme.monoFont)
+                .fontWeight(.bold)
                 .foregroundStyle(Theme.secondaryForeground)
-                .padding(.top, 2)
+                .padding(.top, 3)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 if let thinking, !thinking.isEmpty {
                     ThinkingContentView(text: thinking)
                 }
 
-                VStack(alignment: .leading, spacing: 0) {
-                    if text.isEmpty && isStreaming {
-                        ThinkingDotsView()
-                    } else {
-                        HStack(alignment: .bottom, spacing: 0) {
-                            MarkdownContentView(text: text)
-                            if isStreaming {
-                                Text("▌")
-                                    .foregroundStyle(Theme.primaryForeground)
-                                    .opacity(cursorOn ? 1 : 0)
-                                    .animation(
-                                        .easeInOut(duration: 0.5).repeatForever(autoreverses: true),
-                                        value: cursorOn
-                                    )
-                                    .onAppear { cursorOn = true }
-                            }
+                if text.isEmpty && isStreaming {
+                    ThinkingDotsView()
+                } else {
+                    HStack(alignment: .bottom, spacing: 0) {
+                        MarkdownContentView(text: text)
+                        if isStreaming {
+                            Text("▌")
+                                .foregroundStyle(Theme.primaryForeground)
+                                .opacity(cursorOn ? 1 : 0)
+                                .animation(
+                                    .easeInOut(duration: 0.5).repeatForever(autoreverses: true),
+                                    value: cursorOn
+                                )
+                                .onAppear { cursorOn = true }
                         }
                     }
                 }
-                .padding(Theme.bubblePadding)
-                .background(
-                    Theme.assistantBubbleBackground,
-                    in: RoundedRectangle(cornerRadius: Theme.bubbleCornerRadius)
-                )
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer(minLength: Theme.bubbleMinSpacing)
         }

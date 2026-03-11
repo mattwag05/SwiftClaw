@@ -4,6 +4,7 @@ import SwiftClawCore
 /// Writes text content to a file within the sandbox.
 public struct WriteFileTool: SwiftClawTool {
     public let name = "write_file"
+    public let requiresConfirmation = true
     public let description =
         "Write text content to a file. Creates intermediate directories as needed. Overwrites existing files."
 
