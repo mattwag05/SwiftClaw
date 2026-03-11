@@ -25,7 +25,7 @@ swift run swiftclaw tools          # List available tools
 .build/release/swiftclaw eval "prompt" --adapter-b <name>  # A/B eval (base vs adapter); prompts for winner [A/B/tie/skip]
 .build/release/swiftclaw eval "prompt" --adapter-a <n1> --adapter-b <n2>  # Adapter vs adapter A/B
 # Eval results saved to ~/.swiftclaw/evals/<epoch>.json
-swift test                         # Run all tests (159 tests)
+swift test                         # Run all tests (175 tests)
 ```
 
 ## MLX Setup (one-time)
@@ -107,3 +107,14 @@ cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
 - **Test isolation pattern for stores** — use `init(param: URL? = nil)` where `nil` = real home dir and non-nil = test temp dir; matches `FileSessionStore(baseDir:)`. Don't add `__testInit` factory methods.
 - **`OutputFormatting.swift` is the shared CLI utility file** — add small `swiftclaw`-target helpers there (e.g. `col()`, `parseTags()`); it's the target's utils module.
 - **`list_directory` doesn't expand `~`** — `FileManager` won't expand tilde in paths; model must pass absolute paths or use the `shell` tool with `ls ~/...` instead.
+- **`ModelBackend` test mocks must implement the streaming method** — protocol requires `generate(...) -> AsyncThrowingStream<StreamChunk, Error>` (not `async throws`). The `async throws` convenience is a default extension. See `PlaceholderTests.swift:MockBackend` for the canonical pattern (struct, not actor; `responses: [GenerationResponse]`).
+- **Actor methods in tests need `await`** — `AgentMemory` is an actor; calls to `get()`, `set()`, `delete()`, `all()`, `formatted()` from test functions require `await` and the test must be `async`.
+- **`MockBackend` name is taken** — `PlaceholderTests.swift` defines `struct MockBackend`. New test files must use distinct names (e.g. `FixedResponseBackend`, `FixedTextBackend`, `MultiChunkBackend`).
+- **`MessageRole.system` vs `.system`** — when Swift can't infer the type (e.g. comparing `result[1].role == .system`), use the fully qualified `MessageRole.system`.
+
+### Streaming Implementation
+
+- **`ModelBackend` overload ambiguity** — `backend.generate()` in an `async` context resolves to the `async throws -> GenerationResponse` convenience, not the streaming protocol method. Fix: `let stream: AsyncThrowingStream<StreamChunk, Error> = backend.generate(...)` (explicit type annotation forces the correct overload).
+- **Pre-`</think>` chunk buffering** — buffer streaming chunks as `[String]` (not a concatenated string) so each can be flushed as its own `.textDelta` after classification. Concatenating into one string then yielding it as a single event breaks per-chunk granularity in both tests and UI.
+- **`streamingContentVersion: Int` pattern** — in-place `messages[idx] = …` replacements don't change `messages.count`, so `onChange(of: messages.count)` won't fire. Bump a separate counter in the ViewModel and observe it for streaming scroll updates.
+- **`feature/p2-streaming` is locked in a worktree** — `.worktrees/feature-p2-streaming/` holds that branch; `git checkout feature/p2-streaming` from main always fails with "already used by worktree". P4+ work lives on `main`.
