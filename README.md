@@ -1,7 +1,7 @@
 # SwiftClaw
 
 <p align="center">
-  <img src="docs/AppIcon.png" alt="SwiftClaw" width="180" />
+  <img src="docs/AppIcon.jpg" alt="SwiftClaw" width="180" />
 </p>
 
 A macOS-first, Swift-native AI agent framework with on-device MLX inference. Privacy-first, self-hosted, no cloud surface.
