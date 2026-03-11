@@ -80,6 +80,17 @@ public enum Theme {
     public static let monoFont        = Font.system(.caption, design: .monospaced)
     public static let monoLabelFont   = Font.system(.footnote, design: .monospaced).weight(.semibold)
 
+    // MARK: - Sidebar
+
+    public static let railWidth: CGFloat     = 52
+    public static let sidebarWidth: CGFloat  = 220
+    public static let sidebarItemRadius: CGFloat = 8
+    public static let sidebarItemBackground  = Color.white.opacity(0.06)
+    public static let sidebarSelectedRing    = brandGold
+    public static let sidebarDivider         = Color.white.opacity(0.08)
+    public static let sidebarLightText       = Color.white.opacity(0.7)
+    public static let sidebarDimText         = Color.white.opacity(0.35)
+
     // MARK: - Layout
 
     public static let bubbleMinSpacing: CGFloat = 80

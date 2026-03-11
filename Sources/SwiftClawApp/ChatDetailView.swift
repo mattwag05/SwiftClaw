@@ -17,17 +17,33 @@ struct ChatDetailView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         if viewModel.messages.isEmpty {
-                            VStack(spacing: 12) {
+                            VStack(spacing: 16) {
+                                Spacer()
+
                                 Image(systemName: "bird")
                                     .font(.system(size: 44))
                                     .symbolRenderingMode(.hierarchical)
                                     .foregroundStyle(Theme.brandBlue)
-                                Text("ASK ANYTHING TO GET STARTED")
+
+                                Text("WHAT CAN I HELP WITH?")
                                     .font(.system(.footnote, design: .monospaced).weight(.semibold))
                                     .foregroundStyle(Theme.brandDeepBlue.opacity(0.5))
+
+                                Spacer()
+
+                                SuggestionChipsView(
+                                    suggestions: [
+                                        "What's my system info?",
+                                        "Show disk usage",
+                                        "List running processes",
+                                        "What time is it?",
+                                    ],
+                                    onSelect: { viewModel.sendSuggestion($0) }
+                                )
+                                .padding(.horizontal, 32)
+                                .padding(.bottom, 16)
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .padding(.top, 120)
                         } else {
                             LazyVStack(alignment: .leading, spacing: 14) {
                                 ForEach(viewModel.messages) { bubble in
@@ -91,27 +107,7 @@ struct ChatDetailView: View {
                 }
             }
         }
-        .navigationTitle(viewModel.messages.isEmpty ? "SwiftClaw" : "Sysop")
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                BackendStatusView(
-                    backendType: viewModel.backendType,
-                    modelId: viewModel.modelId,
-                    state: viewModel.backendState
-                )
-            }
-            ToolbarItem(placement: .primaryAction) {
-                if viewModel.isGenerating {
-                    Button {
-                        viewModel.cancelGeneration()
-                    } label: {
-                        Label("Stop", systemImage: "stop.circle")
-                            .foregroundStyle(.red)
-                    }
-                    .accessibilityLabel("Stop generating")
-                }
-            }
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

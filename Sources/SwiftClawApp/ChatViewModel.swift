@@ -154,6 +154,11 @@ final class ChatViewModel {
         selectedSessionId = sessionId
     }
 
+    func sendSuggestion(_ text: String) {
+        inputText = text
+        send()
+    }
+
     func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isGenerating else { return }
