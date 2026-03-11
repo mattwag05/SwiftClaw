@@ -144,7 +144,7 @@ swift test
 
 ## Roadmap
 
-- **v0.1.0-beta** (current): Core runtime, MLX backend, Sysop Agent CLI
+- **v0.1.0** (current): Core runtime, MLX backend, Sysop Agent CLI
 - **v1**: iOS support, pi-mono adapter, persistent memory, local agent templates
 
 ## License

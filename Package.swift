@@ -16,7 +16,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
-        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", branch: "main"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", revision: "e33eba8513595bde535719c48fedcb10ade5af57"),
         .package(url: "https://github.com/ml-explore/mlx-swift.git", exact: "0.30.6"),
     ],
     targets: [
