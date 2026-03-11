@@ -259,6 +259,85 @@ struct MockBackend: ModelBackend {
     #expect(finalText == "Echo said: world")
 }
 
+@Test func sessionEmitsTextDeltaEvents() async throws {
+    let backend = MockBackend(responses: [
+        GenerationResponse(content: "Hello, world!", finishReason: .stop)
+    ])
+
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "Test", tools: [], modelId: "mock"
+    ))
+
+    let session = Session(agent: agent, backend: backend)
+    var gotThinkingDelta = false
+    var turnContent = ""
+
+    let events = await session.respond(to: "Hi")
+    for try await event in events {
+        switch event {
+        case let .textDelta(_, isThinking):
+            if isThinking { gotThinkingDelta = true }
+        case let .turn(response):
+            turnContent = response.content
+        default:
+            break
+        }
+    }
+
+    // Short response (< 2000 chars) with no </think> stays in thinking phase:
+    // the text delta is emitted with isThinking: true (empty string thinking signal).
+    // The actual content is delivered via the .turn event.
+    #expect(gotThinkingDelta, "Should emit at least one thinking delta for short responses without </think>")
+    #expect(turnContent == "Hello, world!", "Turn event should have full content")
+}
+
+@Test func sessionTextDeltaThinkBoundaryEmitsNonThinkingSuffix() async throws {
+    // MockBackend emits content as a single text chunk.
+    // Content containing </think> should have the suffix emitted as isThinking: false.
+    let backend = MockBackend(responses: [
+        GenerationResponse(content: "reasoning</think>answer", finishReason: .stop)
+    ])
+
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "Test", tools: [], modelId: "mock"
+    ))
+
+    let session = Session(agent: agent, backend: backend)
+    var nonThinkingDeltas: [String] = []
+
+    let events = await session.respond(to: "Hi")
+    for try await event in events {
+        if case let .textDelta(text, isThinking) = event, !isThinking {
+            nonThinkingDeltas.append(text)
+        }
+    }
+
+    #expect(nonThinkingDeltas.contains("answer"), "Suffix after </think> should be emitted as non-thinking delta")
+}
+
+@Test func sessionTextDeltaThinkBoundaryTurnContentIsStripped() async throws {
+    // The .turn response content should also have the think block stripped.
+    let backend = MockBackend(responses: [
+        GenerationResponse(content: "reasoning</think>answer", finishReason: .stop)
+    ])
+
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "Test", tools: [], modelId: "mock"
+    ))
+
+    let session = Session(agent: agent, backend: backend)
+    var turnContent = ""
+
+    let events = await session.respond(to: "Hi")
+    for try await event in events {
+        if case let .turn(response) = event {
+            turnContent = response.content
+        }
+    }
+
+    #expect(turnContent == "answer", "Turn content should have </think> prefix stripped")
+}
+
 // MARK: - Error Tests
 
 @Test func swiftClawErrorDescriptions() {
