@@ -11,7 +11,7 @@ public struct AssistantMessageView: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Theme.secondaryForeground)
                 .padding(.top, 2)
-            MarkdownTextView(text: text)
+            MarkdownContentView(text: text)
                 .padding(Theme.bubblePadding)
                 .background(Theme.assistantBubbleBackground, in: RoundedRectangle(cornerRadius: Theme.bubbleCornerRadius))
             Spacer(minLength: Theme.bubbleMinSpacing)

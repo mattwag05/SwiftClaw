@@ -22,6 +22,7 @@ final class ChatViewModel {
     var messages: [ChatBubble] = []
     var inputText: String = ""
     var isGenerating: Bool = false
+    var streamingContentVersion: Int = 0
     var backendState: BackendState = .idle
     var errorMessage: String? = nil
 
@@ -39,7 +40,11 @@ final class ChatViewModel {
     var autoAdapter: Bool = false
 
     // MARK: Memory settings
-    var memoryEnabled: Bool = true
+    var memoryEnabled: Bool = false
+
+    // MARK: Tool approval
+    var toolApprovalOverrides: [String: Bool] = [:]
+    private var pendingApproval: (callId: String, continuation: CheckedContinuation<Bool, Never>)? = nil
 
     // MARK: Private state
     private var session: Session? = nil
@@ -47,6 +52,7 @@ final class ChatViewModel {
     private let store: FileSessionStore
     private var generationTask: Task<Void, Never>? = nil
     private var currentMetadata: SessionMetadata? = nil
+    private var agentMemory: AgentMemory? = nil
 
     init() {
         // FileSessionStore.init can throw only on directory creation failure;
@@ -128,7 +134,22 @@ final class ChatViewModel {
             generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)
         )
         let agent = Agent(configuration: agentConfig)
-        session = Session(agent: agent, backend: backend, sessionId: sessionId)
+        agentMemory = memoryEnabled ? (try? AgentMemory(namespace: "SysopAgent")) : nil
+        var sessionConfig = SessionConfiguration()
+        sessionConfig.memoryEnabled = memoryEnabled
+        if toolApprovalOverrides.isEmpty {
+            for tool in tools {
+                toolApprovalOverrides[tool.name] = tool.requiresConfirmation
+            }
+        }
+        session = Session(
+            agent: agent,
+            backend: backend,
+            config: sessionConfig,
+            sessionId: sessionId,
+            memory: agentMemory,
+            approvalDelegate: makeApprovalDelegate()
+        )
         currentMetadata = SessionMetadata(agentName: agentConfig.name, modelId: modelId)
         selectedSessionId = sessionId
     }
@@ -150,9 +171,38 @@ final class ChatViewModel {
     }
 
     func cancelGeneration() {
+        if let pending = pendingApproval {
+            pendingApproval = nil
+            pending.continuation.resume(returning: false)
+        }
         generationTask?.cancel()
         generationTask = nil
         isGenerating = false
+    }
+
+    func approveToolCall(callId: String) {
+        guard let pending = pendingApproval, pending.callId == callId else { return }
+        pendingApproval = nil
+        pending.continuation.resume(returning: true)
+    }
+
+    func denyToolCall(callId: String) {
+        guard let pending = pendingApproval, pending.callId == callId else { return }
+        pendingApproval = nil
+        pending.continuation.resume(returning: false)
+    }
+
+    func makeApprovalDelegate() -> any ToolApprovalDelegate {
+        return UIToolApprovalDelegate { [weak self] toolName, callId, _ in
+            guard let self else { return false }
+            let needsApproval = await MainActor.run { self.toolApprovalOverrides[toolName] ?? false }
+            if !needsApproval { return true }
+            return await withCheckedContinuation { cont in
+                Task { @MainActor [weak self] in
+                    self?.pendingApproval = (callId, cont)
+                }
+            }
+        }
     }
 
     // MARK: - Session Management
@@ -179,11 +229,22 @@ final class ChatViewModel {
                 generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)
             )
             let agent = Agent(configuration: agentConfig)
+            agentMemory = memoryEnabled ? (try? AgentMemory(namespace: "SysopAgent")) : nil
+            var sessionConfig = SessionConfiguration()
+            sessionConfig.memoryEnabled = memoryEnabled
+            if toolApprovalOverrides.isEmpty {
+                for tool in tools {
+                    toolApprovalOverrides[tool.name] = tool.requiresConfirmation
+                }
+            }
             session = Session(
                 agent: agent,
                 backend: backend,
+                config: sessionConfig,
                 sessionId: id,
-                restoredMessages: restored.messages
+                restoredMessages: restored.messages,
+                memory: agentMemory,
+                approvalDelegate: makeApprovalDelegate()
             )
             currentMetadata = restored.metadata
             rebuildBubbles(from: restored.messages)
@@ -237,23 +298,114 @@ final class ChatViewModel {
         isGenerating = true
         messages.append(ChatBubble(kind: .user(text)))
 
+        // Streaming bubble state (reset per agentic round)
+        var streamingBubbleId: UUID? = nil
+        var currentText = ""
+        var currentThinking: String? = nil
+
+        func ensureStreamingBubble() {
+            if streamingBubbleId == nil {
+                let id = UUID()
+                streamingBubbleId = id
+                messages.append(ChatBubble(id: id, kind: .streamingAssistant(text: "", thinking: nil, isStreaming: true)))
+            }
+        }
+
+        func updateStreamingBubble() {
+            guard let id = streamingBubbleId,
+                  let idx = messages.lastIndex(where: { $0.id == id }) else { return }
+            messages[idx] = ChatBubble(id: id, kind: .streamingAssistant(
+                text: currentText, thinking: currentThinking, isStreaming: true
+            ))
+            streamingContentVersion += 1
+        }
+
+        func finalizeStreamingBubble(response: GenerationResponse) {
+            guard let id = streamingBubbleId,
+                  let idx = messages.lastIndex(where: { $0.id == id }) else { return }
+            let finalText = currentText.isEmpty ? response.content : currentText
+            if finalText.isEmpty && response.toolCalls.isEmpty {
+                messages.remove(at: idx)
+            } else if currentThinking != nil {
+                // Keep streaming variant so collapsible thinking section stays visible
+                messages[idx] = ChatBubble(id: id, kind: .streamingAssistant(
+                    text: finalText, thinking: currentThinking, isStreaming: false
+                ))
+            } else {
+                messages[idx] = ChatBubble(id: id, kind: .assistant(finalText))
+            }
+        }
+
         do {
             let stream = await agentSession.respond(to: text)
             for try await event in stream {
                 if Task.isCancelled { break }
                 switch event {
-                case let .toolCallStart(id, name):
-                    messages.append(ChatBubble(kind: .toolCall(name: name, callId: id)))
-                case let .toolResult(id, result):
-                    messages.append(ChatBubble(kind: .toolResult(content: result.content, isError: result.isError, callId: id)))
-                case let .turn(response):
-                    if !response.content.isEmpty {
-                        messages.append(ChatBubble(kind: .assistant(response.content)))
+                case let .textDelta(delta):
+                    currentText += delta
+                    ensureStreamingBubble()
+                    updateStreamingBubble()
+
+                case let .thinkingDelta(delta):
+                    currentThinking = (currentThinking ?? "") + delta
+                    ensureStreamingBubble()
+                    updateStreamingBubble()
+
+                case let .toolCallPending(id, name, arguments):
+                    messages.append(ChatBubble(kind: .toolCallPending(name: name, arguments: arguments, callId: id)))
+
+                case let .toolCallDenied(id, name):
+                    if let idx = messages.lastIndex(where: {
+                        if case let .toolCallPending(_, _, cid) = $0.kind { return cid == id }
+                        return false
+                    }) {
+                        messages[idx] = ChatBubble(kind: .toolCallDenied(name: name, callId: id))
+                    } else {
+                        messages.append(ChatBubble(kind: .toolCallDenied(name: name, callId: id)))
                     }
+
+                case let .toolCallStart(id, name):
+                    if let idx = messages.lastIndex(where: {
+                        if case let .toolCallPending(_, _, cid) = $0.kind { return cid == id }
+                        return false
+                    }) {
+                        messages[idx] = ChatBubble(kind: .toolCall(name: name, callId: id))
+                    } else {
+                        messages.append(ChatBubble(kind: .toolCall(name: name, callId: id)))
+                    }
+
+                case let .toolResult(id, result):
+                    messages.append(ChatBubble(kind: .toolResult(
+                        content: result.content, isError: result.isError, callId: id
+                    )))
+
+                case let .turn(response):
+                    finalizeStreamingBubble(response: response)
+                    // Reset streaming state for the next agentic round (tool calls may trigger more)
+                    streamingBubbleId = nil
+                    currentText = ""
+                    currentThinking = nil
+
                 case let .warning(msg):
                     messages.append(ChatBubble(kind: .warning(msg)))
+
+                case let .memoryUpdated(keys):
+                    messages.append(ChatBubble(kind: .warning("Memory updated: \(keys.joined(separator: ", "))")))
+
                 case .done:
-                    break
+                    // Finalize any streaming bubble that never got a .turn (e.g. cancelled mid-stream)
+                    if let id = streamingBubbleId,
+                       let idx = messages.lastIndex(where: { $0.id == id }) {
+                        if currentText.isEmpty && currentThinking == nil {
+                            messages.remove(at: idx)
+                        } else if currentThinking != nil {
+                            messages[idx] = ChatBubble(id: id, kind: .streamingAssistant(
+                                text: currentText, thinking: currentThinking, isStreaming: false
+                            ))
+                        } else {
+                            messages[idx] = ChatBubble(id: id, kind: .assistant(currentText))
+                        }
+                    }
                 }
             }
             // Auto-save after each turn (skip if cancelled)
@@ -262,6 +414,15 @@ final class ChatViewModel {
                 await refreshSessions()
             }
         } catch {
+            // Finalize any open streaming bubble before showing error
+            if let id = streamingBubbleId,
+               let idx = messages.lastIndex(where: { $0.id == id }) {
+                if currentText.isEmpty && currentThinking == nil {
+                    messages.remove(at: idx)
+                } else {
+                    messages[idx] = ChatBubble(id: id, kind: .assistant(currentText))
+                }
+            }
             if !Task.isCancelled {
                 messages.append(ChatBubble(kind: .warning("Error: \(error.localizedDescription)")))
             }

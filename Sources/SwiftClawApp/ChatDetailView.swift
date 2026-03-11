@@ -3,6 +3,7 @@ import SwiftClawUI
 
 struct ChatDetailView: View {
     @Environment(ChatViewModel.self) private var viewModel
+    @State private var isNearBottom = true
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -12,15 +13,33 @@ struct ChatDetailView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             ForEach(viewModel.messages) { bubble in
-                                ChatBubbleView(bubble: bubble)
-                                    .id(bubble.id)
+                                ChatBubbleView(
+                                    bubble: bubble,
+                                    onApproveToolCall: { callId in viewModel.approveToolCall(callId: callId) },
+                                    onDenyToolCall: { callId in viewModel.denyToolCall(callId: callId) }
+                                )
+                                .id(bubble.id)
                             }
                             Color.clear.frame(height: 1).id("bottom")
                         }
                         .padding()
                     }
+                    .onScrollGeometryChange(for: Bool.self) { geo in
+                        let distanceFromBottom = geo.contentSize.height
+                            - (geo.contentOffset.y + geo.visibleRect.height)
+                        return distanceFromBottom < 100
+                    } action: { _, nearBottom in
+                        isNearBottom = nearBottom
+                    }
                     .onChange(of: viewModel.messages.count) {
-                        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                        if isNearBottom {
+                            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                        }
+                    }
+                    .onChange(of: viewModel.streamingContentVersion) {
+                        if isNearBottom {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
                     }
                 }
 

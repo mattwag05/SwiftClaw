@@ -12,18 +12,31 @@ public actor Session {
     private let config: SessionConfiguration
     public let sessionId: String?
     private var isRunning: Bool = false
+    private let approvalDelegate: (any ToolApprovalDelegate)?
+
+    // Memory support (optional)
+    private let memory: AgentMemory?
+    private let consolidator: MemoryConsolidator
+    private let compressor: ContextCompressor
+    private var turnsSinceConsolidation: Int = 0
 
     /// Create a new session with a fresh conversation history.
     public init(
         agent: Agent,
         backend: any ModelBackend,
         config: SessionConfiguration = SessionConfiguration(),
-        sessionId: String? = nil
+        sessionId: String? = nil,
+        memory: AgentMemory? = nil,
+        approvalDelegate: (any ToolApprovalDelegate)? = nil
     ) {
         self.agent = agent
         self.backend = backend
         self.config = config
         self.sessionId = sessionId
+        self.memory = memory
+        self.approvalDelegate = approvalDelegate
+        self.consolidator = MemoryConsolidator()
+        self.compressor = ContextCompressor()
         self.messages = [
             Message(role: .system, content: agent.configuration.systemPrompt)
         ]
@@ -36,12 +49,18 @@ public actor Session {
         backend: any ModelBackend,
         config: SessionConfiguration = SessionConfiguration(),
         sessionId: String,
-        restoredMessages: [Message]
+        restoredMessages: [Message],
+        memory: AgentMemory? = nil,
+        approvalDelegate: (any ToolApprovalDelegate)? = nil
     ) {
         self.agent = agent
         self.backend = backend
         self.config = config
         self.sessionId = sessionId
+        self.memory = memory
+        self.approvalDelegate = approvalDelegate
+        self.consolidator = MemoryConsolidator()
+        self.compressor = ContextCompressor()
         self.messages = restoredMessages
     }
 
@@ -58,6 +77,7 @@ public actor Session {
         let agent = self.agent
         let backend = self.backend
         let config = self.config
+        let approvalDelegate = self.approvalDelegate
 
         if isRunning {
             return AsyncThrowingStream { continuation in
@@ -80,6 +100,7 @@ public actor Session {
                         agent: agent,
                         backend: backend,
                         config: config,
+                        approvalDelegate: approvalDelegate,
                         continuation: continuation
                     )
                     await self.setRunning(false)
@@ -98,31 +119,143 @@ public actor Session {
         agent: Agent,
         backend: any ModelBackend,
         config: SessionConfiguration,
+        approvalDelegate: (any ToolApprovalDelegate)?,
         continuation: AsyncThrowingStream<SessionEvent, Error>.Continuation
     ) async throws {
+        // 1. Memory injection: rebuild system message with remembered facts
+        if config.memoryEnabled, let mem = memory {
+            let facts = await mem.formatted()
+            let basePrompt = agent.configuration.systemPrompt
+            let enriched = basePrompt + "\n\n## Remembered Facts\n" + facts
+            if !messages.isEmpty {
+                messages[0] = Message(role: .system, content: enriched)
+            }
+        }
+
+        // 2. Append user message
         messages.append(Message(role: .user, content: prompt))
 
-        // Trim oldest non-system messages if we've exceeded the history limit.
-        // Walk backwards from the trim point to avoid splitting a tool-call group
-        // (assistant message with tool calls + subsequent tool result messages).
+        // 3. Context compression (before hard trim)
+        if let threshold = config.compressionTokenThreshold,
+           compressor.estimateTokens(messages) > threshold {
+            // If memory enabled, consolidate the compressible region first
+            if config.memoryEnabled, let mem = memory, let sid = sessionId {
+                let compressible = Array(messages.dropFirst().dropLast(config.compressionKeepRecent))
+                if !compressible.isEmpty {
+                    let keys = (try? await consolidator.consolidate(
+                        messages: compressible,
+                        using: backend,
+                        config: agent.configuration.generationConfig,
+                        into: mem,
+                        sessionId: sid
+                    )) ?? []
+                    if !keys.isEmpty {
+                        continuation.yield(.memoryUpdated(keys: keys))
+                    }
+                }
+            }
+            // Compress
+            let compressed = (try? await compressor.compress(
+                messages,
+                using: backend,
+                config: agent.configuration.generationConfig,
+                keepRecent: config.compressionKeepRecent
+            )) ?? messages
+            messages = compressed
+            continuation.yield(.warning("Context compressed — older messages summarized"))
+        }
+
+        // 4. Hard trim (fallback / overflow guard)
         if messages.count > config.maxTotalMessages {
             let keepCount = max(1, config.maxTotalMessages - 1)
             var trimmed = Array(messages.dropFirst().suffix(keepCount))
-            // If the trim point landed inside a tool-call group (assistant + its tool
-            // results), drop leading orphaned tool results to keep the history coherent.
-            // Guard: never trim all messages — keep at least the most recent one.
             while trimmed.count > 1, trimmed.first?.role == .tool {
                 trimmed.removeFirst()
             }
             messages = [messages[0]] + trimmed
         }
 
+        // 5. Agentic loop
         var lastResponse = GenerationResponse(content: "", finishReason: .stop)
         for _ in 0..<config.maxToolRoundTrips {
-            let response = try await backend.generate(
+            // Streaming generation with think-block detection.
+            // Text chunks are buffered until we know if they're thinking or real content.
+            // Buffering per-chunk (not concatenated) so each can be flushed individually.
+            var bufferedChunks: [String] = []  // Pre-</think> chunks, waiting for classification
+            var postThinkText = ""             // Confirmed real text (after </think>)
+            var sawThinkEnd = false
+            var accumulatedToolCalls: [ToolCallRequest] = []
+            var finishReason: StreamChunk.FinishReason = .stop
+
+            let stream: AsyncThrowingStream<StreamChunk, Error> = backend.generate(
                 messages: messages,
                 tools: agent.toolRegistry.definitions,
                 config: agent.configuration.generationConfig
+            )
+
+            for try await chunk in stream {
+                if let text = chunk.text {
+                    if sawThinkEnd {
+                        // After </think> — yield real content immediately
+                        postThinkText += text
+                        let cleaned = stripToolCallXML(text)
+                        if !cleaned.isEmpty {
+                            continuation.yield(.textDelta(cleaned))
+                        }
+                    } else {
+                        bufferedChunks.append(text)
+                        // Check if </think> appeared anywhere in the accumulated buffer
+                        let combined = bufferedChunks.joined()
+                        if let range = combined.range(of: "</think>") {
+                            sawThinkEnd = true
+                            var thinkPart = String(combined[combined.startIndex..<range.lowerBound])
+                            thinkPart = thinkPart
+                                .replacingOccurrences(of: "<think>", with: "")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            let afterThink = String(combined[range.upperBound...])
+                            bufferedChunks = []
+                            if !thinkPart.isEmpty {
+                                continuation.yield(.thinkingDelta(thinkPart))
+                            }
+                            if !afterThink.isEmpty {
+                                let cleaned = stripToolCallXML(afterThink)
+                                if !cleaned.isEmpty {
+                                    continuation.yield(.textDelta(cleaned))
+                                }
+                                postThinkText = afterThink
+                            }
+                        }
+                    }
+                }
+                if let tc = chunk.toolCalls { accumulatedToolCalls.append(contentsOf: tc) }
+                if let fr = chunk.finishReason { finishReason = fr }
+            }
+
+            // If no </think> found, flush each buffered chunk individually as text deltas
+            if !sawThinkEnd && !bufferedChunks.isEmpty {
+                for buffered in bufferedChunks {
+                    let cleaned = stripToolCallXML(buffered)
+                    if !cleaned.isEmpty {
+                        continuation.yield(.textDelta(cleaned))
+                    }
+                }
+                postThinkText = bufferedChunks.joined()
+            }
+
+            // Build clean final text (same cleanup as the non-streaming convenience method)
+            var cleanText = stripToolCallXML(postThinkText).trimmingCharacters(in: .whitespacesAndNewlines)
+            // Handle unclosed <think> (model stopped mid-thought)
+            if cleanText.contains("<think>") {
+                cleanText = cleanText.replacingOccurrences(
+                    of: "<think>[\\s\\S]*$", with: "", options: .regularExpression
+                )
+                cleanText = cleanText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            let response = GenerationResponse(
+                content: cleanText,
+                toolCalls: accumulatedToolCalls,
+                finishReason: finishReason
             )
             lastResponse = response
 
@@ -132,18 +265,51 @@ public actor Session {
                 toolCalls: response.toolCalls.isEmpty ? nil : response.toolCalls
             ))
 
-            // No tool calls — this is the final answer
             if response.toolCalls.isEmpty {
                 continuation.yield(.turn(response))
                 if response.finishReason == .length {
                     continuation.yield(.warning("Response truncated — model hit token limit"))
                 }
                 continuation.yield(.done)
+
+                // 6. Post-turn consolidation
+                if config.memoryEnabled, let mem = memory, let sid = sessionId {
+                    turnsSinceConsolidation += 1
+                    if turnsSinceConsolidation >= config.consolidationInterval {
+                        turnsSinceConsolidation = 0
+                        let recent = messages.suffix(config.consolidationInterval * 4)
+                        let keys = (try? await consolidator.consolidate(
+                            messages: Array(recent),
+                            using: backend,
+                            config: agent.configuration.generationConfig,
+                            into: mem,
+                            sessionId: sid
+                        )) ?? []
+                        if !keys.isEmpty {
+                            continuation.yield(.memoryUpdated(keys: keys))
+                        }
+                    }
+                }
+
                 return
             }
 
-            // Execute each tool call and feed results back
             for call in response.toolCalls {
+                if let delegate = approvalDelegate {
+                    continuation.yield(.toolCallPending(id: call.id, name: call.name, arguments: call.arguments))
+                    let approved = await delegate.shouldExecute(
+                        toolName: call.name, callId: call.id, arguments: call.arguments
+                    )
+                    if !approved {
+                        continuation.yield(.toolCallDenied(id: call.id, name: call.name))
+                        messages.append(Message(
+                            role: .tool,
+                            content: "Tool call denied by user.",
+                            toolCallId: call.id
+                        ))
+                        continue
+                    }
+                }
                 continuation.yield(.toolCallStart(id: call.id, name: call.name))
                 let result = try await agent.toolRegistry.execute(
                     name: call.name, arguments: call.arguments
@@ -155,16 +321,30 @@ public actor Session {
                     toolCallId: call.id
                 ))
             }
-            // Loop back: LLM sees tool results and generates next turn
         }
 
-        // Max round-trips reached: emit last response as partial answer + warning
         continuation.yield(.turn(lastResponse))
         continuation.yield(.warning("Exceeded max tool round-trips (\(config.maxToolRoundTrips))"))
         continuation.yield(.done)
     }
 
     private func setRunning(_ value: Bool) { isRunning = value }
+
+    /// Strip tool-call XML blocks from a text chunk (Qwen3.5 text-injection format).
+    private func stripToolCallXML(_ text: String) -> String {
+        var result = text
+        if result.contains("<tool_call>") {
+            result = result.replacingOccurrences(
+                of: "<tool_call>[\\s\\S]*?</tool_call>", with: "", options: .regularExpression
+            )
+        }
+        if result.contains("<function=") {
+            result = result.replacingOccurrences(
+                of: "<function=[\\s\\S]*?</function>", with: "", options: .regularExpression
+            )
+        }
+        return result
+    }
 
     /// Current conversation history (read-only snapshot).
     public var conversationHistory: [Message] {

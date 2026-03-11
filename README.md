@@ -1,5 +1,9 @@
 # SwiftClaw
 
+<p align="center">
+  <img src="docs/AppIcon.png" alt="SwiftClaw" width="180" />
+</p>
+
 A macOS-first, Swift-native AI agent framework with on-device MLX inference. Privacy-first, self-hosted, no cloud surface.
 
 ## Overview
@@ -136,7 +140,7 @@ The `shell` tool runs through `ShellSandbox` which rejects pipes, redirects, com
 swift test
 ```
 
-40 tests across `SwiftClawCoreTests` and `SwiftClawToolsTests`. Core tests use a `MockBackend` — no model download needed.
+175 tests across all test targets. Core tests use a `MockBackend` — no model download needed.
 
 ## Roadmap
 

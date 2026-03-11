@@ -43,6 +43,9 @@ struct RunCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Auto-select the best adapter for this session (MLX only, ignored when --adapter is set).")
     var autoAdapter: Bool = false
 
+    @Flag(name: .long, help: "Enable memory consolidation — persist facts across turns.")
+    var memory: Bool = false
+
     mutating func run() async throws {
         print("SwiftClaw \(SwiftClawVersion.version)")
 
@@ -107,7 +110,11 @@ struct RunCommand: AsyncParsableCommand {
         let store = try FileSessionStore()
         let agentSession: Session
 
-        let sessionConfig = SessionConfiguration(maxToolRoundTrips: maxRoundTrips)
+        var sessionConfig = SessionConfiguration(maxToolRoundTrips: maxRoundTrips)
+        sessionConfig.memoryEnabled = memory
+
+        let agentMemory: AgentMemory? = memory ? (try? AgentMemory(namespace: "SysopAgent")) : nil
+        if memory { print("Memory enabled (namespace: SysopAgent)\n") }
         if let sessionId = session {
             do {
                 let restored = try await store.load(sessionId: sessionId)
@@ -116,7 +123,8 @@ struct RunCommand: AsyncParsableCommand {
                     backend: resolvedBackend,
                     config: sessionConfig,
                     sessionId: sessionId,
-                    restoredMessages: restored.messages
+                    restoredMessages: restored.messages,
+                    memory: agentMemory
                 )
                 let count = restored.messages.filter { $0.role == .user }.count
                 print("Resumed session '\(sessionId)' (\(count) prior turns).\n")
@@ -125,7 +133,8 @@ struct RunCommand: AsyncParsableCommand {
                     agent: agent,
                     backend: resolvedBackend,
                     config: sessionConfig,
-                    sessionId: sessionId
+                    sessionId: sessionId,
+                    memory: agentMemory
                 )
                 print("Started new session '\(sessionId)'.\n")
             }
@@ -134,7 +143,8 @@ struct RunCommand: AsyncParsableCommand {
             agentSession = Session(
                 agent: agent,
                 backend: resolvedBackend,
-                config: sessionConfig
+                config: sessionConfig,
+                memory: agentMemory
             )
         }
 
@@ -158,7 +168,17 @@ struct RunCommand: AsyncParsableCommand {
                 break
             }
             if trimmed == "/help" {
-                print("Commands: /help  /tools  /quit  /exit")
+                let memCmd = memory ? "  /memory  " : ""
+                print("Commands: /help  /tools\(memCmd)  /quit  /exit")
+                continue
+            }
+            if trimmed == "/memory" {
+                if let mem = agentMemory {
+                    let formatted = await mem.formatted()
+                    print("Memory (SysopAgent):\n\(formatted)")
+                } else {
+                    print("Memory not enabled. Run with --memory to enable.")
+                }
                 continue
             }
             if trimmed == "/tools" {
@@ -174,9 +194,23 @@ struct RunCommand: AsyncParsableCommand {
             }
 
             do {
+                var receivedTextDelta = false
                 let events = await agentSession.respond(to: trimmed)
                 for try await event in events {
                     switch event {
+                    case let .textDelta(text):
+                        receivedTextDelta = true
+                        print(text, terminator: "")
+                        fflush(stdout)
+                    case let .thinkingDelta(text):
+                        // Show thinking content in dim text
+                        fputs("\u{001B}[2m\(text)\u{001B}[0m", stdout)
+                        fflush(stdout)
+                    case let .toolCallPending(_, name, _):
+                        // CLI has no delegate — this case won't occur in practice
+                        print("\n[pending \(name)]", terminator: "")
+                    case let .toolCallDenied(_, name):
+                        print("\n[denied \(name)]", terminator: "")
                     case let .toolCallStart(_, name):
                         print("\n[calling \(name)...]", terminator: "")
                         fflush(stdout)
@@ -187,7 +221,11 @@ struct RunCommand: AsyncParsableCommand {
                             print(" done.")
                         }
                     case let .turn(response):
-                        if !response.content.isEmpty {
+                        if receivedTextDelta {
+                            // Text was already printed via .textDelta — nothing more to print
+                            receivedTextDelta = false
+                        } else if !response.content.isEmpty {
+                            // Non-streaming backend fallback: print full content
                             print(response.content)
                         } else if response.toolCalls.isEmpty {
                             fputs("\u{001B}[2m[empty response]\u{001B}[0m\n", stderr)
@@ -196,6 +234,8 @@ struct RunCommand: AsyncParsableCommand {
                         print()
                     case let .warning(msg):
                         fputs("\u{001B}[33m[warning] \(msg)\u{001B}[0m\n", stderr)
+                    case let .memoryUpdated(keys):
+                        fputs("\u{001B}[2m[memory] stored: \(keys.joined(separator: ", "))\u{001B}[0m\n", stderr)
                     }
                 }
                 // Auto-save after each complete turn
