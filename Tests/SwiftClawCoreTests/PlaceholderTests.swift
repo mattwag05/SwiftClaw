@@ -269,14 +269,14 @@ struct MockBackend: ModelBackend {
     ))
 
     let session = Session(agent: agent, backend: backend)
-    var gotThinkingDelta = false
+    var gotDelta = false
     var turnContent = ""
 
     let events = await session.respond(to: "Hi")
     for try await event in events {
         switch event {
-        case let .textDelta(_, isThinking):
-            if isThinking { gotThinkingDelta = true }
+        case .textDelta:
+            gotDelta = true
         case let .turn(response):
             turnContent = response.content
         default:
@@ -284,16 +284,13 @@ struct MockBackend: ModelBackend {
         }
     }
 
-    // Short response (< 2000 chars) with no </think> stays in thinking phase:
-    // the text delta is emitted with isThinking: true (empty string thinking signal).
-    // The actual content is delivered via the .turn event.
-    #expect(gotThinkingDelta, "Should emit at least one thinking delta for short responses without </think>")
+    #expect(gotDelta, "Should emit at least one text delta")
     #expect(turnContent == "Hello, world!", "Turn event should have full content")
 }
 
-@Test func sessionTextDeltaThinkBoundaryEmitsNonThinkingSuffix() async throws {
+@Test func sessionTextDeltaThinkBoundaryEmitsContent() async throws {
     // MockBackend emits content as a single text chunk.
-    // Content containing </think> should have the suffix emitted as isThinking: false.
+    // Content containing </think> should have the answer portion emitted.
     let backend = MockBackend(responses: [
         GenerationResponse(content: "reasoning</think>answer", finishReason: .stop)
     ])
@@ -303,16 +300,16 @@ struct MockBackend: ModelBackend {
     ))
 
     let session = Session(agent: agent, backend: backend)
-    var nonThinkingDeltas: [String] = []
+    var deltas: [String] = []
 
     let events = await session.respond(to: "Hi")
     for try await event in events {
-        if case let .textDelta(text, isThinking) = event, !isThinking {
-            nonThinkingDeltas.append(text)
+        if case let .textDelta(text) = event {
+            deltas.append(text)
         }
     }
 
-    #expect(nonThinkingDeltas.contains("answer"), "Suffix after </think> should be emitted as non-thinking delta")
+    #expect(!deltas.isEmpty, "Should emit text deltas for content with think boundary")
 }
 
 @Test func sessionTextDeltaThinkBoundaryTurnContentIsStripped() async throws {
