@@ -215,44 +215,139 @@ public actor MemoryStore: MemoryProvider {
     }
 
     public func search(query: String, layer: MemoryLayer?, topK: Int) async throws -> [ScoredMemory] {
-        let rows: [Row]
+        // 1. Optionally obtain a query embedding for semantic scoring.
+        let queryEmbedding: [Float]? = await embeddingEngine.embed(query)
+
+        // 2. Run FTS5 search to get candidates with BM25 ranks.
+        //    On no FTS match, fall back to all entries in the target layer(s).
+        struct Candidate {
+            let row: Row
+            let bm25Rank: Double?  // nil = came from fallback scan, no FTS rank
+        }
+
+        let ftsSQL: String
+        let fallbackSQL: String
 
         if let layer {
-            rows = try await dbPool.read { db in
-                try Row.fetchAll(db,
-                    sql: """
-                        SELECT m.*, fts.rank
-                        FROM memories m
-                        JOIN memories_fts fts ON m.rowid = fts.rowid
-                        WHERE memories_fts MATCH ?
-                          AND m.layer = ?
-                        ORDER BY fts.rank
-                        LIMIT ?
-                        """,
-                    arguments: [query, layer.rawValue, topK])
-            }
+            ftsSQL = """
+                SELECT m.rowid, m.key, m.layer, m.content, m.source,
+                       m.created_at, m.updated_at, m.access_count,
+                       m.last_accessed_at, m.embedding,
+                       fts.rank AS bm25_rank
+                FROM memories_fts fts
+                JOIN memories m ON m.rowid = fts.rowid
+                WHERE memories_fts MATCH ?
+                  AND m.layer = ?
+                ORDER BY fts.rank
+                LIMIT 100
+                """
+            fallbackSQL = "SELECT *, NULL AS bm25_rank FROM memories WHERE layer = ?"
         } else {
-            rows = try await dbPool.read { db in
-                try Row.fetchAll(db,
-                    sql: """
-                        SELECT m.*, fts.rank
-                        FROM memories m
-                        JOIN memories_fts fts ON m.rowid = fts.rowid
-                        WHERE memories_fts MATCH ?
-                        ORDER BY fts.rank
-                        LIMIT ?
-                        """,
-                    arguments: [query, topK])
+            ftsSQL = """
+                SELECT m.rowid, m.key, m.layer, m.content, m.source,
+                       m.created_at, m.updated_at, m.access_count,
+                       m.last_accessed_at, m.embedding,
+                       fts.rank AS bm25_rank
+                FROM memories_fts fts
+                JOIN memories m ON m.rowid = fts.rowid
+                WHERE memories_fts MATCH ?
+                ORDER BY fts.rank
+                LIMIT 100
+                """
+            fallbackSQL = "SELECT *, NULL AS bm25_rank FROM memories"
+        }
+
+        let candidates: [(row: Row, bm25Rank: Double?)] = try await dbPool.read { db in
+            // Try FTS first
+            let ftsArgs: StatementArguments = layer != nil
+                ? [query, layer!.rawValue]
+                : [query]
+            let ftsRows = try Row.fetchAll(db, sql: ftsSQL, arguments: ftsArgs)
+
+            if !ftsRows.isEmpty {
+                return ftsRows.map { ($0, ($0["bm25_rank"] as Double?)) }
+            }
+
+            // Fallback: return all entries (no BM25 score)
+            let fallbackArgs: StatementArguments = layer != nil ? [layer!.rawValue] : []
+            let fallbackRows = try Row.fetchAll(db, sql: fallbackSQL, arguments: fallbackArgs)
+            return fallbackRows.map { ($0, nil) }
+        }
+
+        // 3. Score each candidate using hybrid formula.
+        let scored: [(entry: MemoryEntry, embData: Data?, bm25Rank: Double?, score: Float)] = candidates.map { candidate in
+            let entry = Self.entryFromRow(candidate.row)
+            let embData: Data? = candidate.row["embedding"]
+
+            let bm25Score: Float
+            if let rank = candidate.bm25Rank {
+                bm25Score = MemoryRetriever.normalizeBM25(rank)
+            } else {
+                bm25Score = 0.0
+            }
+
+            let semanticScore: Float
+            if let qEmb = queryEmbedding,
+               let data = embData,
+               !data.isEmpty {
+                let entryEmb = Self.decodeEmbedding(data)
+                if let entryEmb {
+                    let sim = cosineSimilarity(qEmb, entryEmb)
+                    // Cosine is in [-1, 1]; clamp to [0, 1]
+                    semanticScore = max(0.0, sim)
+                } else {
+                    semanticScore = 0.0
+                }
+            } else {
+                semanticScore = 0.0
+            }
+
+            let recency = MemoryRetriever.recencyScore(from: entry.updatedAt)
+            let freq = MemoryRetriever.accessFrequencyScore(count: entry.accessCount)
+            let finalScore = MemoryRetriever.hybridScore(
+                semanticSimilarity: semanticScore,
+                bm25Normalized: bm25Score,
+                recencyScore: recency,
+                accessFrequency: freq
+            )
+
+            return (entry, embData, candidate.bm25Rank, finalScore)
+        }
+
+        // 4. Sort by score descending, take top K.
+        let topResults = scored
+            .sorted { $0.score > $1.score }
+            .prefix(topK)
+
+        // 5. Bump access_count and last_accessed_at for returned entries.
+        let now = Date().timeIntervalSince1970
+        let returnedKeys: [(key: String, layer: String)] = topResults.map { item in
+            // We need the layer value; read it back from the entry via allEntries isn't efficient.
+            // Instead capture it from the row content: layer is a stored column.
+            // We stored layer in the SELECT, so re-derive from the candidates mapping.
+            // Simpler: fetch the layer from the candidates array by matching key.
+            let candidateRow = candidates.first { Self.entryFromRow($0.row).key == item.entry.key }
+            let layerVal: String = candidateRow?.row["layer"] ?? MemoryLayer.longTerm.rawValue
+            return (item.entry.key, layerVal)
+        }
+
+        if !returnedKeys.isEmpty {
+            try? await dbPool.write { db in
+                for pair in returnedKeys {
+                    try db.execute(
+                        sql: """
+                            UPDATE memories
+                            SET access_count = access_count + 1,
+                                last_accessed_at = ?
+                            WHERE key = ? AND layer = ?
+                            """,
+                        arguments: [now, pair.key, pair.layer]
+                    )
+                }
             }
         }
 
-        return rows.map { row -> ScoredMemory in
-            let entry = Self.entryFromRow(row)
-            // BM25 rank is negative (lower = worse). Normalize to 0.0-1.0.
-            let rank: Double = row["rank"] ?? -10.0
-            let score = Float(max(0.0, 1.0 + rank / 10.0))
-            return ScoredMemory(entry: entry, score: score)
-        }
+        return topResults.map { ScoredMemory(entry: $0.entry, score: $0.score) }
     }
 
     public func shutdown() async {
@@ -274,6 +369,15 @@ public actor MemoryStore: MemoryProvider {
                 sql: "UPDATE memories SET embedding = ? WHERE key = ? AND layer = ?",
                 arguments: [data, key, layer.rawValue]
             )
+        }
+    }
+
+    // MARK: - Embedding Helpers
+
+    private static func decodeEmbedding(_ data: Data) -> [Float]? {
+        guard !data.isEmpty, data.count % MemoryLayout<Float>.size == 0 else { return nil }
+        return data.withUnsafeBytes { ptr in
+            Array(ptr.bindMemory(to: Float.self))
         }
     }
 
