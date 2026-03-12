@@ -36,9 +36,6 @@ let package = Package(
         .target(name: "SwiftClawMemory", dependencies: [
             "SwiftClawCore",
             .product(name: "GRDB", package: "GRDB.swift"),
-            .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
-            .product(name: "MLXLLM", package: "mlx-swift-lm"),
-            .product(name: "MLX", package: "mlx-swift"),
         ]),
         .executableTarget(name: "swiftclaw", dependencies: [
             "SwiftClawCore", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools", "SwiftClawPippin",

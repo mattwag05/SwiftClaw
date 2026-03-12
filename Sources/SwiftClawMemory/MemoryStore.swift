@@ -132,11 +132,9 @@ public actor MemoryStore: MemoryProvider {
             )
         }
 
-        // Background embedding stub (no-op for Phase 2)
-        let task = Task<Void, Never> { [weak self] in
-            await self?.embedInBackground(key: key, layer: layer)
-        }
-        embeddingTasks.insert(task)
+        // Background embedding — schedule via actor-isolated helper so the task
+        // can remove itself from embeddingTasks when it completes normally.
+        scheduleEmbedding(key: key, layer: layer)
     }
 
     public func delete(_ key: String, layer: MemoryLayer) async throws {
@@ -370,6 +368,22 @@ public actor MemoryStore: MemoryProvider {
                 arguments: [data, key, layer.rawValue]
             )
         }
+    }
+
+    private func scheduleEmbedding(key: String, layer: MemoryLayer) {
+        // Create the task inside the actor. We forward the task handle to the
+        // closure via a continuation so it can remove itself from embeddingTasks
+        // when it completes, preventing unbounded Set growth.
+        var task: Task<Void, Never>?
+        task = Task {
+            await self.embedInBackground(key: key, layer: layer)
+            if let t = task { self.embeddingTasks.remove(t) }
+        }
+        if let t = task { embeddingTasks.insert(t) }
+    }
+
+    private func removeEmbeddingTask(_ task: Task<Void, Never>) {
+        embeddingTasks.remove(task)
     }
 
     // MARK: - Embedding Helpers

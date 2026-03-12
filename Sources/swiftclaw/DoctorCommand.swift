@@ -68,7 +68,7 @@ struct DoctorCommand: AsyncParsableCommand {
         // Memory database check
         print("\n[Memory Database]")
         let memoryDir = NSHomeDirectory() + "/.swiftclaw/memory"
-        let memoryDbPath = memoryDir + "/memory.db"
+        let memoryDbPath = memoryDir + "/memories.db"
         let dirExists = FileManager.default.fileExists(atPath: memoryDir)
         let dbExists = FileManager.default.fileExists(atPath: memoryDbPath)
         if dbExists {
