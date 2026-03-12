@@ -7,10 +7,11 @@ public actor MemoryStore: MemoryProvider {
     let dbPool: DatabasePool
     private let baseDir: URL
     var embeddingTasks: Set<Task<Void, Never>> = []
+    private let embeddingEngine: EmbeddingEngine
 
     // MARK: - Init
 
-    public init(baseDir: URL? = nil) throws {
+    public init(baseDir: URL? = nil, embeddingEngine: EmbeddingEngine = EmbeddingEngine()) throws {
         let dir: URL
         if let baseDir {
             dir = baseDir
@@ -75,6 +76,8 @@ public actor MemoryStore: MemoryProvider {
                 """)
         }
         try migrator.migrate(pool)
+
+        self.embeddingEngine = embeddingEngine
 
         // JSON migration from legacy files
         try Self.migrateJSONFiles(in: dir, dbPool: pool)
@@ -262,7 +265,16 @@ public actor MemoryStore: MemoryProvider {
     // MARK: - Private Helpers
 
     private func embedInBackground(key: String, layer: MemoryLayer) async {
-        // Phase 3: embed and store vector. No-op stub for Phase 2.
+        guard let content = await get(key, layer: layer)?.content else { return }
+        guard let embedding = await embeddingEngine.embed(content) else { return }
+        // Serialise as little-endian IEEE 754 floats
+        let data = embedding.withUnsafeBytes { Data($0) }
+        try? await dbPool.write { db in
+            try db.execute(
+                sql: "UPDATE memories SET embedding = ? WHERE key = ? AND layer = ?",
+                arguments: [data, key, layer.rawValue]
+            )
+        }
     }
 
     // Static so it can be called from GRDB sync closures without actor isolation issues
