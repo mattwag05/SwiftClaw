@@ -1,5 +1,4 @@
 import Foundation
-import MLXLMCommon
 
 /// Actor that converts text into fixed-length float vectors for semantic similarity.
 ///
