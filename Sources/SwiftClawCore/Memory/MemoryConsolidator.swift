@@ -1,6 +1,6 @@
 import Foundation
 
-/// Extracts memorable facts from a conversation and persists them to AgentMemory.
+/// Extracts memorable facts from a conversation and persists them to a MemoryProvider.
 ///
 /// Stateless — create once and reuse across turns.
 public struct MemoryConsolidator: Sendable {
