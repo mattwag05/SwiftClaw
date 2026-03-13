@@ -13,7 +13,7 @@ public struct SwiftClawConfig: Sendable, Codable {
 
     public static let `default` = SwiftClawConfig(
         fileSandbox: .default,
-        embeddingModelId: "nomic-ai/nomic-embed-text-v1.5-MLX",
+        embeddingModelId: "nomic-ai/nomic-embed-text-v1.5",
         embeddingDimensions: 768,
         retrievalTopK: 10,
         retrievalThreshold: 0.3,
@@ -24,7 +24,7 @@ public struct SwiftClawConfig: Sendable, Codable {
 
     public init(
         fileSandbox: FileSandboxConfig = .default,
-        embeddingModelId: String = "nomic-ai/nomic-embed-text-v1.5-MLX",
+        embeddingModelId: String = "nomic-ai/nomic-embed-text-v1.5",
         embeddingDimensions: Int = 768,
         retrievalTopK: Int = 10,
         retrievalThreshold: Float = 0.3,
@@ -57,7 +57,7 @@ public struct SwiftClawConfig: Sendable, Codable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         fileSandbox = try c.decodeIfPresent(FileSandboxConfig.self, forKey: .fileSandbox) ?? .default
-        embeddingModelId = try c.decodeIfPresent(String.self, forKey: .embeddingModelId) ?? "nomic-ai/nomic-embed-text-v1.5-MLX"
+        embeddingModelId = try c.decodeIfPresent(String.self, forKey: .embeddingModelId) ?? "nomic-ai/nomic-embed-text-v1.5"
         embeddingDimensions = try c.decodeIfPresent(Int.self, forKey: .embeddingDimensions) ?? 768
         retrievalTopK = try c.decodeIfPresent(Int.self, forKey: .retrievalTopK) ?? 10
         retrievalThreshold = try c.decodeIfPresent(Float.self, forKey: .retrievalThreshold) ?? 0.3

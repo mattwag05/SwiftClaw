@@ -55,13 +55,14 @@ struct DoctorCommand: AsyncParsableCommand {
 
         // Embedding model check
         print("\n[Embedding Model]")
-        let embeddingModelId = "nomic-ai/nomic-embed-text-v1.5-MLX"
+        let embeddingModelId = (try? SwiftClawConfig.load())?.embeddingModelId
+            ?? SwiftClawConfig.default.embeddingModelId
         print("Embedding model: \(embeddingModelId)")
         let embeddingCachePath = NSHomeDirectory() + "/Library/Caches/models/" + embeddingModelId
         if FileManager.default.fileExists(atPath: embeddingCachePath) {
             print("Status: cached locally at \(embeddingCachePath)")
         } else {
-            print("Status: not cached (will use hash-based fallback on first run)")
+            print("Status: not cached (will use hash-based fallback; MLX embeddings require --memory with mlx backend)")
             // Note: this is NOT a failure — embedding model is optional (graceful degradation)
         }
 

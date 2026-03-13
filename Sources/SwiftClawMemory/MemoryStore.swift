@@ -7,11 +7,11 @@ public actor MemoryStore: MemoryProvider {
     let dbPool: DatabasePool
     private let baseDir: URL
     var embeddingTasks: Set<Task<Void, Never>> = []
-    private let embeddingEngine: EmbeddingEngine
+    private let embeddingEngine: any EmbeddingProvider
 
     // MARK: - Init
 
-    public init(baseDir: URL? = nil, embeddingEngine: EmbeddingEngine = EmbeddingEngine()) throws {
+    public init(baseDir: URL? = nil, embeddingEngine: (any EmbeddingProvider)? = nil) throws {
         let dir: URL
         if let baseDir {
             dir = baseDir
@@ -77,7 +77,7 @@ public actor MemoryStore: MemoryProvider {
         }
         try migrator.migrate(pool)
 
-        self.embeddingEngine = embeddingEngine
+        self.embeddingEngine = embeddingEngine ?? EmbeddingEngine()
 
         // JSON migration from legacy files
         try Self.migrateJSONFiles(in: dir, dbPool: pool)
@@ -284,10 +284,11 @@ public actor MemoryStore: MemoryProvider {
                 bm25Score = 0.0
             }
 
+            let expectedEmbeddingBytes = embeddingEngine.dimensions * MemoryLayout<Float>.size
             let semanticScore: Float
             if let qEmb = queryEmbedding,
                let data = embData,
-               !data.isEmpty {
+               data.count == expectedEmbeddingBytes {
                 let entryEmb = Self.decodeEmbedding(data)
                 if let entryEmb {
                     let sim = cosineSimilarity(qEmb, entryEmb)
@@ -353,6 +354,31 @@ public actor MemoryStore: MemoryProvider {
             task.cancel()
         }
         embeddingTasks.removeAll()
+    }
+
+    /// Clears all stored embedding blobs and re-embeds every entry in the background.
+    ///
+    /// Use this after switching to a different `EmbeddingProvider` (e.g. hash → MLX) so
+    /// that stored vectors are consistent with the current provider's output dimensions.
+    public func reindex() async {
+        // 1. Null all embedding blobs so stale vectors don't bias search.
+        try? await dbPool.write { db in
+            try db.execute(sql: "UPDATE memories SET embedding = NULL")
+        }
+
+        // 2. Fetch all (key, layer) pairs and re-schedule background embedding.
+        let pairs: [(key: String, layer: MemoryLayer)] = (try? await dbPool.read { db in
+            try Row.fetchAll(db, sql: "SELECT key, layer FROM memories").compactMap { row in
+                guard let key: String = row["key"],
+                      let layerStr: String = row["layer"],
+                      let layer = MemoryLayer(rawValue: layerStr) else { return nil }
+                return (key, layer)
+            }
+        }) ?? []
+
+        for (key, layer) in pairs {
+            scheduleEmbedding(key: key, layer: layer)
+        }
     }
 
     // MARK: - Private Helpers

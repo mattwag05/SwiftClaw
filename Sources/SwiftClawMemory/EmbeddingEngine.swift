@@ -1,31 +1,22 @@
 import Foundation
+import SwiftClawCore
 
-/// Actor that converts text into fixed-length float vectors for semantic similarity.
+/// Hash-based embedding provider — deterministic 768-dim L2-normalised vectors.
 ///
-/// Phase 3 uses a deterministic hash-based projection (768-dim, L2-normalised).
-/// When the nomic-embed-text MLX model is cached, this stub logs a notice and still
-/// falls back to the hash projection — full ML embedding is deferred to Phase 4.
-public actor EmbeddingEngine {
+/// Uses a djb2 word-hash projection with no external dependencies.
+/// Used as the default fallback when `MLXEmbeddingEngine` is unavailable or the
+/// nomic model has not been downloaded.
+public actor EmbeddingEngine: EmbeddingProvider {
 
-    public static let defaultModelId = "nomic-ai/nomic-embed-text-v1.5-MLX"
+    public static let defaultModelId = "nomic-ai/nomic-embed-text-v1.5"
 
-    /// Dimensionality of the output vectors.
+    /// Dimensionality of the output vectors (static constant).
     public static let dimensions = 768
 
-    private let modelId: String
+    /// `EmbeddingProvider` conformance — nonisolated so it can be read without actor-hopping.
+    public nonisolated var dimensions: Int { Self.dimensions }
 
-    public init(modelId: String = EmbeddingEngine.defaultModelId) {
-        self.modelId = modelId
-        // Check whether the model is cached and emit an informational message.
-        let cacheDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Caches/models")
-            .appendingPathComponent(modelId)
-        if FileManager.default.fileExists(atPath: cacheDir.path) {
-            fputs("[memory] embedding model found at \(cacheDir.path), using hash-based fallback (ML embedding deferred to Phase 4)\n", stderr)
-        } else {
-            fputs("[memory] embedding model not found, using hash-based fallback\n", stderr)
-        }
-    }
+    public init() {}
 
     // MARK: - Public API
 
