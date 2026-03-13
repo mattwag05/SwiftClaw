@@ -27,21 +27,38 @@ final class ChatViewModel {
     var backendState: BackendState = .idle
     var errorMessage: String? = nil
 
-    // MARK: Backend settings (persisted via AppStorage wrappers)
-    var backendType: BackendType = .http
-    var modelId: String = "mlx-community/Qwen3.5-9B-MLX-4bit"
-    var httpURL: String = "http://localhost:11434/v1"
-    var httpAPIKey: String = ""
-    var temperature: Double = 0.7
-    var maxTokens: Int = 4096
+    // MARK: Backend settings — persisted to UserDefaults via didSet
+    // @AppStorage is incompatible with @Observable; stored properties with didSet are the correct pattern.
+    var backendType: BackendType = .http {
+        didSet { UserDefaults.standard.set(backendType.rawValue, forKey: "sc.backendType") }
+    }
+    var modelId: String = "mlx-community/Qwen3.5-9B-MLX-4bit" {
+        didSet { UserDefaults.standard.set(modelId, forKey: "sc.modelId") }
+    }
+    var httpURL: String = "http://localhost:11434/v1" {
+        didSet { UserDefaults.standard.set(httpURL, forKey: "sc.httpURL") }
+    }
+    var httpAPIKey: String = "" {
+        didSet { UserDefaults.standard.set(httpAPIKey, forKey: "sc.httpAPIKey") }
+    }
+    var temperature: Double = 0.7 {
+        didSet { UserDefaults.standard.set(temperature, forKey: "sc.temperature") }
+    }
+    var maxTokens: Int = 4096 {
+        didSet { UserDefaults.standard.set(maxTokens, forKey: "sc.maxTokens") }
+    }
 
     // MARK: Adapter settings
     var adapters: [AdapterMetadata] = []
     var selectedAdapter: String? = nil
-    var autoAdapter: Bool = false
+    var autoAdapter: Bool = false {
+        didSet { UserDefaults.standard.set(autoAdapter, forKey: "sc.autoAdapter") }
+    }
 
     // MARK: Memory settings
-    var memoryEnabled: Bool = false
+    var memoryEnabled: Bool = false {
+        didSet { UserDefaults.standard.set(memoryEnabled, forKey: "sc.memoryEnabled") }
+    }
 
     enum EmbeddingState: Equatable {
         case idle
@@ -71,6 +88,19 @@ final class ChatViewModel {
         } else {
             fatalError("Cannot create FileSessionStore: both default and temp-dir attempts failed")
         }
+        // Restore persisted settings
+        let ud = UserDefaults.standard
+        if let raw = ud.string(forKey: "sc.backendType"), let bt = BackendType(rawValue: raw) { backendType = bt }
+        if let s = ud.string(forKey: "sc.modelId") { modelId = s }
+        if let s = ud.string(forKey: "sc.httpURL") { httpURL = s }
+        if let s = ud.string(forKey: "sc.httpAPIKey") { httpAPIKey = s }
+        let savedTemp = ud.double(forKey: "sc.temperature")
+        if savedTemp != 0 { temperature = savedTemp }
+        let savedTokens = ud.integer(forKey: "sc.maxTokens")
+        if savedTokens != 0 { maxTokens = savedTokens }
+        autoAdapter = ud.bool(forKey: "sc.autoAdapter")
+        memoryEnabled = ud.bool(forKey: "sc.memoryEnabled")
+
         Task {
             await refreshSessions()
             await refreshAdapters()

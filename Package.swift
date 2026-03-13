@@ -20,6 +20,7 @@ let package = Package(
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", revision: "e33eba8513595bde535719c48fedcb10ade5af57"),
         .package(url: "https://github.com/ml-explore/mlx-swift.git", exact: "0.30.6"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
+        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.0.0"),
     ],
     targets: [
         .target(name: "SwiftClawCore"),
@@ -30,6 +31,7 @@ let package = Package(
             .product(name: "MLXLLM", package: "mlx-swift-lm"),
             .product(name: "MLXEmbedders", package: "mlx-swift-lm"),
             .product(name: "MLXOptimizers", package: "mlx-swift"),
+            .product(name: "Hub", package: "swift-transformers"),
         ]),
         .target(name: "SwiftClawTools", dependencies: ["SwiftClawCore"]),
         .target(name: "SwiftClawPippin", dependencies: ["SwiftClawCore"]),
