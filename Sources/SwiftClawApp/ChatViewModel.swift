@@ -43,6 +43,14 @@ final class ChatViewModel {
     // MARK: Memory settings
     var memoryEnabled: Bool = false
 
+    enum EmbeddingState: Equatable {
+        case idle
+        case loading(Double)
+        case ready
+        case unavailable
+    }
+    var embeddingState: EmbeddingState = .idle
+
     // MARK: Tool approval
     var toolApprovalOverrides: [String: Bool] = [:]
     private var pendingApproval: (callId: String, continuation: CheckedContinuation<Bool, Never>)? = nil
@@ -122,7 +130,7 @@ final class ChatViewModel {
 
         let sessionId = UUID().uuidString
         let config = (try? SwiftClawConfig.load()) ?? .default
-        agentMemory = memoryEnabled ? (try? MemoryStore()) : nil
+        agentMemory = memoryEnabled ? makeMemoryStore(config: config) : nil
         var tools: [any SwiftClawTool] = SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
         if let memStore = agentMemory {
             tools += MemoryToolFactory.allTools(store: memStore)
@@ -229,7 +237,7 @@ final class ChatViewModel {
             guard let backend else { return }
 
             let config = (try? SwiftClawConfig.load()) ?? .default
-            agentMemory = memoryEnabled ? (try? MemoryStore()) : nil
+            agentMemory = memoryEnabled ? makeMemoryStore(config: config) : nil
             var tools: [any SwiftClawTool] = SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
             if let memStore = agentMemory {
                 tools += MemoryToolFactory.allTools(store: memStore)
@@ -288,6 +296,28 @@ final class ChatViewModel {
     }
 
     // MARK: - Private Helpers
+
+    private func makeMemoryStore(config: SwiftClawConfig) -> (any MemoryProvider)? {
+        if backendType == .mlx {
+            let embEngine = MLXEmbeddingEngine(
+                modelId: config.embeddingModelId
+            ) { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    self?.embeddingState = .loading(progress)
+                }
+            }
+            let store = try? MemoryStore(embeddingEngine: embEngine)
+            if store != nil { embeddingState = .ready }
+            return store
+        } else {
+            return try? MemoryStore()
+        }
+    }
+
+    func reindexMemory() async {
+        guard let store = agentMemory as? MemoryStore else { return }
+        await store.reindex()
+    }
 
     private func resolveAdapterURL() -> URL? {
         if autoAdapter {

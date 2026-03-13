@@ -132,11 +132,46 @@ struct MemorySettingsTab: View {
             Toggle("Enable agent memory", isOn: $vm.memoryEnabled)
 
             if viewModel.memoryEnabled {
-                Text("Memory is stored at ~/.swiftclaw/memory/SysopAgent.json")
+                Text("Memory database: ~/.swiftclaw/memory/memories.db")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Section("Embedding Provider") {
+                    embeddingStateView
+                }
+
+                Button("Re-index Embeddings") {
+                    Task { await viewModel.reindexMemory() }
+                }
+                .help("Clears stored embedding vectors and re-embeds all memories with the current provider.")
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private var embeddingStateView: some View {
+        switch viewModel.embeddingState {
+        case .idle:
+            Text("MLX embeddings will load on first memory write")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .loading(let pct):
+            HStack {
+                ProgressView()
+                    .scaleEffect(0.7)
+                Text("Loading nomic-embed model (\(Int(pct * 100))%)…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .ready:
+            Label("MLX embeddings ready", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .unavailable:
+            Label("Using hash-based fallback", systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
     }
 }

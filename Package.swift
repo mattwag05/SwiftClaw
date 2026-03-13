@@ -28,6 +28,7 @@ let package = Package(
             "SwiftClawCore",
             .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
             .product(name: "MLXLLM", package: "mlx-swift-lm"),
+            .product(name: "MLXEmbedders", package: "mlx-swift-lm"),
             .product(name: "MLXOptimizers", package: "mlx-swift"),
         ]),
         .target(name: "SwiftClawTools", dependencies: ["SwiftClawCore"]),
