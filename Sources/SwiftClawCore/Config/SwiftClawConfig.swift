@@ -3,11 +3,67 @@ import Foundation
 /// Top-level agent configuration loaded from ~/.swiftclaw/config.json.
 public struct SwiftClawConfig: Sendable, Codable {
     public var fileSandbox: FileSandboxConfig
+    public var embeddingModelId: String
+    public var embeddingDimensions: Int
+    public var retrievalTopK: Int
+    public var retrievalThreshold: Float
+    public var memoryEnabled: Bool
+    public var consolidationInterval: Int
+    public var compressionTokenThreshold: Int?
 
-    public static let `default` = SwiftClawConfig(fileSandbox: .default)
+    public static let `default` = SwiftClawConfig(
+        fileSandbox: .default,
+        embeddingModelId: "nomic-ai/nomic-embed-text-v1.5-MLX",
+        embeddingDimensions: 768,
+        retrievalTopK: 10,
+        retrievalThreshold: 0.3,
+        memoryEnabled: false,
+        consolidationInterval: 3,
+        compressionTokenThreshold: nil
+    )
 
-    public init(fileSandbox: FileSandboxConfig = .default) {
+    public init(
+        fileSandbox: FileSandboxConfig = .default,
+        embeddingModelId: String = "nomic-ai/nomic-embed-text-v1.5-MLX",
+        embeddingDimensions: Int = 768,
+        retrievalTopK: Int = 10,
+        retrievalThreshold: Float = 0.3,
+        memoryEnabled: Bool = false,
+        consolidationInterval: Int = 3,
+        compressionTokenThreshold: Int? = nil
+    ) {
         self.fileSandbox = fileSandbox
+        self.embeddingModelId = embeddingModelId
+        self.embeddingDimensions = embeddingDimensions
+        self.retrievalTopK = retrievalTopK
+        self.retrievalThreshold = retrievalThreshold
+        self.memoryEnabled = memoryEnabled
+        self.consolidationInterval = consolidationInterval
+        self.compressionTokenThreshold = compressionTokenThreshold
+    }
+
+    // Custom Codable init for backward compatibility — old JSON without new fields decodes cleanly.
+    enum CodingKeys: String, CodingKey {
+        case fileSandbox
+        case embeddingModelId
+        case embeddingDimensions
+        case retrievalTopK
+        case retrievalThreshold
+        case memoryEnabled
+        case consolidationInterval
+        case compressionTokenThreshold
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fileSandbox = try c.decodeIfPresent(FileSandboxConfig.self, forKey: .fileSandbox) ?? .default
+        embeddingModelId = try c.decodeIfPresent(String.self, forKey: .embeddingModelId) ?? "nomic-ai/nomic-embed-text-v1.5-MLX"
+        embeddingDimensions = try c.decodeIfPresent(Int.self, forKey: .embeddingDimensions) ?? 768
+        retrievalTopK = try c.decodeIfPresent(Int.self, forKey: .retrievalTopK) ?? 10
+        retrievalThreshold = try c.decodeIfPresent(Float.self, forKey: .retrievalThreshold) ?? 0.3
+        memoryEnabled = try c.decodeIfPresent(Bool.self, forKey: .memoryEnabled) ?? false
+        consolidationInterval = try c.decodeIfPresent(Int.self, forKey: .consolidationInterval) ?? 3
+        compressionTokenThreshold = try c.decodeIfPresent(Int.self, forKey: .compressionTokenThreshold)
     }
 
     /// Loads config from ~/.swiftclaw/config.json. Returns `.default` if the file doesn't exist.

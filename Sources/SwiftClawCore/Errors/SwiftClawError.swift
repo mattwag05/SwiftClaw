@@ -15,6 +15,9 @@ public enum SwiftClawError: LocalizedError, Equatable {
     case insufficientTrainingData(String)
     case consolidationFailed(String)
     case compressionFailed(String)
+    case embeddingModelNotFound(String)
+    case embeddingFailed(String)
+    case memoryDatabaseError(String)
 
     public var errorDescription: String? {
         switch self {
@@ -46,6 +49,12 @@ public enum SwiftClawError: LocalizedError, Equatable {
             "Memory consolidation failed: \(detail)"
         case let .compressionFailed(detail):
             "Context compression failed: \(detail)"
+        case let .embeddingModelNotFound(id):
+            "Embedding model not found: \(id)"
+        case let .embeddingFailed(detail):
+            "Embedding failed: \(detail)"
+        case let .memoryDatabaseError(detail):
+            "Memory database error: \(detail)"
         }
     }
 }

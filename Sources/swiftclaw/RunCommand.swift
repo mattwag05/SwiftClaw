@@ -3,6 +3,7 @@ import Foundation
 import SwiftClawCore
 import SwiftClawHTTP
 import SwiftClawMLX
+import SwiftClawMemory
 import SwiftClawPippin
 import SwiftClawTools
 
@@ -87,8 +88,12 @@ struct RunCommand: AsyncParsableCommand {
         }
 
         let config = (try? SwiftClawConfig.load()) ?? .default
-        let tools: [any SwiftClawTool] =
+        let agentMemory: (any MemoryProvider)? = memory ? (try? MemoryStore()) : nil
+        var tools: [any SwiftClawTool] =
             SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
+        if let memStore = agentMemory {
+            tools += MemoryToolFactory.allTools(store: memStore)
+        }
 
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
@@ -113,8 +118,7 @@ struct RunCommand: AsyncParsableCommand {
         var sessionConfig = SessionConfiguration(maxToolRoundTrips: maxRoundTrips)
         sessionConfig.memoryEnabled = memory
 
-        let agentMemory: AgentMemory? = memory ? (try? AgentMemory(namespace: "SysopAgent")) : nil
-        if memory { print("Memory enabled (namespace: SysopAgent)\n") }
+        if memory { print("Memory enabled\n") }
         if let sessionId = session {
             do {
                 let restored = try await store.load(sessionId: sessionId)
@@ -158,6 +162,7 @@ struct RunCommand: AsyncParsableCommand {
 
             guard let line = readLine(strippingNewline: true) else {
                 print("\nGoodbye.")
+                await agentSession.endSession()
                 break
             }
 
@@ -165,6 +170,7 @@ struct RunCommand: AsyncParsableCommand {
             if trimmed.isEmpty { continue }
             if trimmed == "/quit" || trimmed == "/exit" {
                 print("Goodbye.")
+                await agentSession.endSession()
                 break
             }
             if trimmed == "/help" {
@@ -172,12 +178,43 @@ struct RunCommand: AsyncParsableCommand {
                 print("Commands: /help  /tools\(memCmd)  /quit  /exit")
                 continue
             }
-            if trimmed == "/memory" {
-                if let mem = agentMemory {
-                    let formatted = await mem.formatted()
-                    print("Memory (SysopAgent):\n\(formatted)")
-                } else {
+            if trimmed == "/memory" || trimmed.hasPrefix("/memory ") {
+                guard let mem = agentMemory else {
                     print("Memory not enabled. Run with --memory to enable.")
+                    continue
+                }
+                if trimmed.hasPrefix("/memory search ") {
+                    let query = String(trimmed.dropFirst("/memory search ".count))
+                    let results = (try? await mem.search(query: query, layer: nil, topK: 10)) ?? []
+                    if results.isEmpty {
+                        print("No memories found.")
+                    } else {
+                        for r in results {
+                            print("[\(String(format: "%.2f", r.score))] \(r.entry.key): \(r.entry.content)")
+                        }
+                    }
+                } else if trimmed == "/memory clear working" {
+                    try? await mem.clearLayer(.working)
+                    print("Working memory cleared.")
+                } else if trimmed == "/memory clear all" {
+                    print("This will clear ALL memories including long-term. Type 'yes' to confirm:")
+                    if let confirm = readLine(), confirm.lowercased() == "yes" {
+                        try? await mem.clearLayer(.working)
+                        try? await mem.clearLayer(.longTerm)
+                        print("All memory cleared.")
+                    } else {
+                        print("Cancelled.")
+                    }
+                } else {
+                    // Show all memories
+                    let all = await mem.allEntries(layer: nil)
+                    if all.isEmpty {
+                        print("(no memories stored)")
+                    } else {
+                        for entry in all.sorted(by: { $0.key < $1.key }) {
+                            print("- \(entry.key): \(entry.content)")
+                        }
+                    }
                 }
                 continue
             }

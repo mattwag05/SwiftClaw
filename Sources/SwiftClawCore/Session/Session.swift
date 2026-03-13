@@ -15,7 +15,7 @@ public actor Session {
     private let approvalDelegate: (any ToolApprovalDelegate)?
 
     // Memory support (optional)
-    private let memory: AgentMemory?
+    private let memory: (any MemoryProvider)?
     private let consolidator: MemoryConsolidator
     private let compressor: ContextCompressor
     private var turnsSinceConsolidation: Int = 0
@@ -26,7 +26,7 @@ public actor Session {
         backend: any ModelBackend,
         config: SessionConfiguration = SessionConfiguration(),
         sessionId: String? = nil,
-        memory: AgentMemory? = nil,
+        memory: (any MemoryProvider)? = nil,
         approvalDelegate: (any ToolApprovalDelegate)? = nil
     ) {
         self.agent = agent
@@ -50,7 +50,7 @@ public actor Session {
         config: SessionConfiguration = SessionConfiguration(),
         sessionId: String,
         restoredMessages: [Message],
-        memory: AgentMemory? = nil,
+        memory: (any MemoryProvider)? = nil,
         approvalDelegate: (any ToolApprovalDelegate)? = nil
     ) {
         self.agent = agent
@@ -122,13 +122,20 @@ public actor Session {
         approvalDelegate: (any ToolApprovalDelegate)?,
         continuation: AsyncThrowingStream<SessionEvent, Error>.Continuation
     ) async throws {
-        // 1. Memory injection: rebuild system message with remembered facts
+        // 1. Memory injection: rebuild system message with relevant remembered facts
         if config.memoryEnabled, let mem = memory {
-            let facts = await mem.formatted()
-            let basePrompt = agent.configuration.systemPrompt
-            let enriched = basePrompt + "\n\n## Remembered Facts\n" + facts
-            if !messages.isEmpty {
-                messages[0] = Message(role: .system, content: enriched)
+            let relevant = (try? await mem.search(query: prompt, layer: nil, topK: 10)) ?? []
+            let threshold: Float = 0.3
+            let filtered = relevant.filter { $0.score >= threshold }
+            if !filtered.isEmpty {
+                let factsText = filtered.map { scored in
+                    "- \(scored.entry.key): \(scored.entry.content) (score: \(String(format: "%.2f", scored.score)))"
+                }.joined(separator: "\n")
+                let basePrompt = agent.configuration.systemPrompt
+                let enriched = basePrompt + "\n\n## Relevant Memories\n" + factsText
+                if !messages.isEmpty {
+                    messages[0] = Message(role: .system, content: enriched)
+                }
             }
         }
 
@@ -147,6 +154,7 @@ public actor Session {
                         using: backend,
                         config: agent.configuration.generationConfig,
                         into: mem,
+                        layer: .working,
                         sessionId: sid
                     )) ?? []
                     if !keys.isEmpty {
@@ -283,6 +291,7 @@ public actor Session {
                             using: backend,
                             config: agent.configuration.generationConfig,
                             into: mem,
+                            layer: .working,
                             sessionId: sid
                         )) ?? []
                         if !keys.isEmpty {
@@ -344,6 +353,21 @@ public actor Session {
             )
         }
         return result
+    }
+
+    /// End the session: promote working memories to long-term, clear working layer, cancel background tasks.
+    public func endSession() async {
+        guard let mem = memory, sessionId != nil, config.memoryEnabled else { return }
+        // Promote working memories to long-term
+        let workingEntries = await mem.allEntries(layer: .working)
+        if !workingEntries.isEmpty {
+            let keys = workingEntries.map { $0.key }
+            try? await mem.promote(keys: keys)
+        }
+        // Clear working layer
+        try? await mem.clearLayer(.working)
+        // Shutdown (cancel background embedding tasks)
+        await mem.shutdown()
     }
 
     /// Current conversation history (read-only snapshot).

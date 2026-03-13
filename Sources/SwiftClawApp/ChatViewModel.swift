@@ -4,6 +4,7 @@ import SwiftUI
 import SwiftClawCore
 import SwiftClawHTTP
 import SwiftClawMLX
+import SwiftClawMemory
 import SwiftClawTools
 import SwiftClawPippin
 import SwiftClawUI
@@ -52,7 +53,7 @@ final class ChatViewModel {
     private let store: FileSessionStore
     private var generationTask: Task<Void, Never>? = nil
     private var currentMetadata: SessionMetadata? = nil
-    private var agentMemory: AgentMemory? = nil
+    private var agentMemory: (any MemoryProvider)? = nil
 
     init() {
         // FileSessionStore.init can throw only on directory creation failure;
@@ -121,7 +122,11 @@ final class ChatViewModel {
 
         let sessionId = UUID().uuidString
         let config = (try? SwiftClawConfig.load()) ?? .default
-        let tools: [any SwiftClawTool] = SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
+        agentMemory = memoryEnabled ? (try? MemoryStore()) : nil
+        var tools: [any SwiftClawTool] = SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
+        if let memStore = agentMemory {
+            tools += MemoryToolFactory.allTools(store: memStore)
+        }
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
             systemPrompt: """
@@ -134,7 +139,6 @@ final class ChatViewModel {
             generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)
         )
         let agent = Agent(configuration: agentConfig)
-        agentMemory = memoryEnabled ? (try? AgentMemory(namespace: "SysopAgent")) : nil
         var sessionConfig = SessionConfiguration()
         sessionConfig.memoryEnabled = memoryEnabled
         if toolApprovalOverrides.isEmpty {
@@ -225,7 +229,11 @@ final class ChatViewModel {
             guard let backend else { return }
 
             let config = (try? SwiftClawConfig.load()) ?? .default
-            let tools: [any SwiftClawTool] = SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
+            agentMemory = memoryEnabled ? (try? MemoryStore()) : nil
+            var tools: [any SwiftClawTool] = SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
+            if let memStore = agentMemory {
+                tools += MemoryToolFactory.allTools(store: memStore)
+            }
             let agentConfig = AgentConfiguration(
                 name: restored.metadata.agentName,
                 systemPrompt: "You are Sysop, a macOS assistant.",
@@ -234,7 +242,6 @@ final class ChatViewModel {
                 generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)
             )
             let agent = Agent(configuration: agentConfig)
-            agentMemory = memoryEnabled ? (try? AgentMemory(namespace: "SysopAgent")) : nil
             var sessionConfig = SessionConfiguration()
             sessionConfig.memoryEnabled = memoryEnabled
             if toolApprovalOverrides.isEmpty {

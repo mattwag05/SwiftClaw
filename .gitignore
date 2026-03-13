@@ -12,3 +12,14 @@ Package.resolved
 
 # Git worktrees
 .worktrees/
+.superpowers/
+
+# Internal developer/agent documentation
+CLAUDE.md
+AGENTS.md
+
+# Local issue tracking database
+.beads/
+
+# Claude Code local config
+.claude/

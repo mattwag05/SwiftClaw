@@ -1,6 +1,6 @@
 import Foundation
 
-/// Extracts memorable facts from a conversation and persists them to AgentMemory.
+/// Extracts memorable facts from a conversation and persists them to a MemoryProvider.
 ///
 /// Stateless — create once and reuse across turns.
 public struct MemoryConsolidator: Sendable {
@@ -12,7 +12,8 @@ public struct MemoryConsolidator: Sendable {
         messages: [Message],
         using backend: any ModelBackend,
         config: GenerationConfig,
-        into memory: AgentMemory,
+        into memory: any MemoryProvider,
+        layer: MemoryLayer = .working,
         sessionId: String
     ) async throws -> [String] {
         let conversationText = messages
@@ -62,14 +63,14 @@ public struct MemoryConsolidator: Sendable {
            let entries = try? JSONDecoder().decode([RawEntry].self, from: data) {
             for entry in entries where !entry.key.isEmpty && !entry.content.isEmpty {
                 let memEntry = MemoryEntry(key: entry.key, content: entry.content, source: sessionId)
-                try await memory.set(entry.key, entry: memEntry)
+                try await memory.set(entry.key, entry: memEntry, layer: layer)
                 writtenKeys.append(entry.key)
             }
         } else if !raw.isEmpty {
             // Fallback: store entire response as a single fact
             let key = "fact-\(Int(Date().timeIntervalSince1970))"
             let memEntry = MemoryEntry(key: key, content: raw, source: sessionId)
-            try await memory.set(key, entry: memEntry)
+            try await memory.set(key, entry: memEntry, layer: layer)
             writtenKeys.append(key)
         }
 
