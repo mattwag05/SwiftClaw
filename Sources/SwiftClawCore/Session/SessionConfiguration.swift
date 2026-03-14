@@ -16,13 +16,22 @@ public struct SessionConfiguration: Sendable {
     /// Number of recent messages to keep verbatim during compression.
     public var compressionKeepRecent: Int
 
+    // MARK: - Memory retrieval
+
+    /// Maximum memories to inject per turn. Mirrors `SwiftClawConfig.retrievalTopK`.
+    public var retrievalTopK: Int
+    /// Minimum relevance score for memory injection. Mirrors `SwiftClawConfig.retrievalThreshold`.
+    public var retrievalThreshold: Float
+
     public init(
         maxToolRoundTrips: Int = 10,
         maxTotalMessages: Int = 200,
         memoryEnabled: Bool = false,
         consolidationInterval: Int = 3,
         compressionTokenThreshold: Int? = nil,
-        compressionKeepRecent: Int = 10
+        compressionKeepRecent: Int = 10,
+        retrievalTopK: Int = 10,
+        retrievalThreshold: Float = 0.3
     ) {
         self.maxToolRoundTrips = maxToolRoundTrips
         self.maxTotalMessages = maxTotalMessages
@@ -30,5 +39,7 @@ public struct SessionConfiguration: Sendable {
         self.consolidationInterval = consolidationInterval
         self.compressionTokenThreshold = compressionTokenThreshold
         self.compressionKeepRecent = compressionKeepRecent
+        self.retrievalTopK = retrievalTopK
+        self.retrievalThreshold = retrievalThreshold
     }
 }

@@ -209,6 +209,8 @@ public actor MemoryStore: MemoryProvider {
                     arguments: [key, MemoryLayer.working.rawValue]
                 )
             }
+            // Re-embed the promoted entry so it participates in semantic search.
+            scheduleEmbedding(key: key, layer: .longTerm)
         }
     }
 
@@ -273,8 +275,10 @@ public actor MemoryStore: MemoryProvider {
         }
 
         // 3. Score each candidate using hybrid formula.
-        let scored: [(entry: MemoryEntry, embData: Data?, bm25Rank: Double?, score: Float)] = candidates.map { candidate in
+        //    Capture the layer string here so we don't need a second scan later.
+        let scored: [(entry: MemoryEntry, layerVal: String, score: Float)] = candidates.map { candidate in
             let entry = Self.entryFromRow(candidate.row)
+            let layerVal: String = candidate.row["layer"] ?? MemoryLayer.longTerm.rawValue
             let embData: Data? = candidate.row["embedding"]
 
             let bm25Score: Float
@@ -310,7 +314,7 @@ public actor MemoryStore: MemoryProvider {
                 accessFrequency: freq
             )
 
-            return (entry, embData, candidate.bm25Rank, finalScore)
+            return (entry, layerVal, finalScore)
         }
 
         // 4. Sort by score descending, take top K.
@@ -321,13 +325,7 @@ public actor MemoryStore: MemoryProvider {
         // 5. Bump access_count and last_accessed_at for returned entries.
         let now = Date().timeIntervalSince1970
         let returnedKeys: [(key: String, layer: String)] = topResults.map { item in
-            // We need the layer value; read it back from the entry via allEntries isn't efficient.
-            // Instead capture it from the row content: layer is a stored column.
-            // We stored layer in the SELECT, so re-derive from the candidates mapping.
-            // Simpler: fetch the layer from the candidates array by matching key.
-            let candidateRow = candidates.first { Self.entryFromRow($0.row).key == item.entry.key }
-            let layerVal: String = candidateRow?.row["layer"] ?? MemoryLayer.longTerm.rawValue
-            return (item.entry.key, layerVal)
+            (item.entry.key, item.layerVal)
         }
 
         if !returnedKeys.isEmpty {

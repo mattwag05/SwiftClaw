@@ -179,6 +179,8 @@ final class ChatViewModel {
         let agent = Agent(configuration: agentConfig)
         var sessionConfig = SessionConfiguration()
         sessionConfig.memoryEnabled = memoryEnabled
+        sessionConfig.retrievalTopK = config.retrievalTopK
+        sessionConfig.retrievalThreshold = config.retrievalThreshold
         if toolApprovalOverrides.isEmpty {
             for tool in tools {
                 toolApprovalOverrides[tool.name] = tool.requiresConfirmation
@@ -282,6 +284,8 @@ final class ChatViewModel {
             let agent = Agent(configuration: agentConfig)
             var sessionConfig = SessionConfiguration()
             sessionConfig.memoryEnabled = memoryEnabled
+            sessionConfig.retrievalTopK = config.retrievalTopK
+            sessionConfig.retrievalThreshold = config.retrievalThreshold
             if toolApprovalOverrides.isEmpty {
                 for tool in tools {
                     toolApprovalOverrides[tool.name] = tool.requiresConfirmation

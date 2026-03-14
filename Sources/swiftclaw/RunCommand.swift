@@ -132,6 +132,8 @@ struct RunCommand: AsyncParsableCommand {
 
         var sessionConfig = SessionConfiguration(maxToolRoundTrips: maxRoundTrips)
         sessionConfig.memoryEnabled = memory
+        sessionConfig.retrievalTopK = config.retrievalTopK
+        sessionConfig.retrievalThreshold = config.retrievalThreshold
 
         if memory { print("Memory enabled\n") }
         if let sessionId = session {

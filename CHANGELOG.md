@@ -2,6 +2,56 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [Unreleased] — 2026-03-14 audit pass
+
+### Summary
+5 issues identified, 5 fixed. 0 deferred. All 233 tests pass.
+
+#### [security] `SwiftClawTools/EnvVarsTool.swift`
+**Problem:** `env_vars` tool dumped all process environment variables to the LLM
+without filtering, exposing API keys, tokens, passwords, and other credentials
+stored in env vars (e.g. `OPENAI_API_KEY`, `AWS_SECRET_ACCESS_KEY`).
+**Fix:** Added `sensitivePatterns` allowlist. Variable values whose names contain
+`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `AUTH`, `PRIVATE`,
+`CERT`, or `SESSION` are replaced with `[REDACTED]` in both full-dump and
+single-variable lookup responses.
+
+#### [bug] `SwiftClawMemory/MemoryStore.swift` — `promote`
+**Problem:** `promote(keys:)` inserted promoted entries into the `longTerm` layer
+with `embedding = NULL` but never called `scheduleEmbedding`. Promoted memories
+always received `semanticScore = 0.0` in subsequent searches, degrading retrieval
+quality silently.
+**Fix:** Added `scheduleEmbedding(key: key, layer: .longTerm)` after each promotion
+transaction so embeddings are computed asynchronously in the background.
+
+#### [bug] `SwiftClawCore/Session/Session.swift` + `SessionConfiguration.swift`
+**Problem:** `Session.runLoop` hardcoded `topK: 10` and threshold `0.3` for memory
+retrieval injection, ignoring `SwiftClawConfig.retrievalTopK` and
+`SwiftClawConfig.retrievalThreshold` that users can set in `~/.swiftclaw/config.json`.
+**Fix:** Added `retrievalTopK: Int` and `retrievalThreshold: Float` to
+`SessionConfiguration` (defaults matching prior hardcoded values). Updated
+`Session.runLoop` to use `config.retrievalTopK` / `config.retrievalThreshold`.
+Updated `RunCommand` and `ChatViewModel` to populate these from `SwiftClawConfig`.
+Also removed the internal score `(score: 0.xx)` suffix from injected memory text
+to reduce LLM clutter.
+
+#### [quality] `SwiftClawMemory/MemoryStore.swift` — `search`
+**Problem:** Layer extraction for the access-count update loop called
+`Self.entryFromRow($0.row).key` inside a linear scan per top-K result — O(n×k)
+`MemoryEntry` allocations that were immediately discarded.
+**Fix:** The `scored` tuple now carries `layerVal: String` captured once per
+candidate during scoring. The downstream map becomes a simple field access.
+
+#### [token] `SwiftClawCore/Memory/ContextCompressor.swift` — `estimateTokens`
+**Problem:** Token estimate only counted `message.content.count / 4`, ignoring
+`toolCalls[].arguments` (JSON strings) and `toolCalls[].name`. Tool-heavy sessions
+with large argument payloads were systematically under-counted, causing the
+compressor to trigger later than intended and risking context overflow.
+**Fix:** `estimateTokens` now sums `content.count + toolCallChars` (where
+`toolCallChars = Σ(arguments.count + name.count)`) before dividing by 4.
+
+---
+
 ## [0.1.0] — 2026-03-11
 
 Initial public release.

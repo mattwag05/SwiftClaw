@@ -7,8 +7,15 @@ public struct ContextCompressor: Sendable {
     public init() {}
 
     /// Rough token estimate: ~4 characters per token.
+    ///
+    /// Accounts for both the message content and any tool call arguments,
+    /// which can be substantial JSON strings not included in `content`.
     public func estimateTokens(_ messages: [Message]) -> Int {
-        messages.reduce(0) { $0 + ($1.content.count / 4) }
+        messages.reduce(0) { total, msg in
+            let contentChars = msg.content.count
+            let toolCallChars = msg.toolCalls?.reduce(0) { $0 + $1.arguments.count + $1.name.count } ?? 0
+            return total + (contentChars + toolCallChars) / 4
+        }
     }
 
     /// Compress `messages` by summarizing the compressible middle region.
