@@ -1,0 +1,38 @@
+name: Unicode Safety Scan
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: macos-arm64:host
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Scan for invisible Unicode
+        run: |
+          python3 - <<'EOF'
+          import os, re, sys
+          pattern = re.compile(
+              "[\U000E0100-\U000E01EF\uFE00-\uFE0F\u200B-\u200F"
+              "\u2060-\u2064\U000E0000-\U000E007F\U000F0000-\U0010FFFD]"
+          )
+          exts = {'.swift', '.js', '.py', '.rb', '.yml', '.yaml', '.json', '.md'}
+          found = False
+          for root, dirs, files in os.walk('.'):
+              dirs[:] = [d for d in dirs if d != '.git']
+              for f in files:
+                  if any(f.endswith(e) for e in exts):
+                      path = os.path.join(root, f)
+                      try:
+                          text = open(path, encoding='utf-8', errors='ignore').read()
+                          if pattern.search(text):
+                              print("MATCH: " + path, file=sys.stderr)
+                              found = True
+                      except Exception:
+                          pass
+          if found:
+              sys.exit(1)
+          EOF
