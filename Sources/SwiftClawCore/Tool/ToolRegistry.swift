@@ -1,9 +1,20 @@
+import Foundation
+
 /// Lookup table mapping tool names to their implementations.
 public struct ToolRegistry: Sendable {
     private let tools: [String: any SwiftClawTool]
 
     public init(tools: [any SwiftClawTool]) {
-        self.tools = Dictionary(uniqueKeysWithValues: tools.map { ($0.name, $0) })
+        var dict: [String: any SwiftClawTool] = [:]
+        for tool in tools {
+            if dict[tool.name] != nil {
+                // Dictionary(uniqueKeysWithValues:) would crash on duplicates — warn instead and keep first.
+                fputs("[SwiftClaw] Warning: duplicate tool name '\(tool.name)' — keeping first registration\n", stderr)
+            } else {
+                dict[tool.name] = tool
+            }
+        }
+        self.tools = dict
     }
 
     public var definitions: [ToolDefinition] {
