@@ -2,6 +2,42 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [Unreleased] — 2026-03-14
+
+### Audit pass — bugs, reliability, token efficiency
+
+**Issues found:** 3
+**Issues fixed:** 3
+**Deferred:** 0
+
+#### Changes
+
+- **[bug] `Session`: stale memories persist in system prompt across turns**
+  _Files: `Sources/SwiftClawCore/Session/Session.swift`_
+  When turn N injected relevant memories into `messages[0]` but turn N+1 had no
+  matching memories, the enriched system message from turn N was never reset.
+  Stale memories could silently bias the model's responses for the rest of the
+  session. Fix: always reset `messages[0]` to `agent.configuration.systemPrompt`
+  before the memory search so stale injections are cleared even when the new
+  turn produces no hits.
+
+- **[quality] `ToolRegistry.init(tools:)`: fatal crash on duplicate tool names**
+  _Files: `Sources/SwiftClawCore/Tool/ToolRegistry.swift`_
+  `Dictionary(uniqueKeysWithValues:)` throws a Swift fatal error (process crash)
+  if two tools share a name — a realistic risk when combining multiple
+  `ToolFactory` arrays. Replaced with an explicit loop that emits a stderr
+  warning and keeps the first registration, preventing startup crashes.
+
+- **[token] `ContextCompressor.estimateTokens()`: tool-call arguments not counted**
+  _Files: `Sources/SwiftClawCore/Memory/ContextCompressor.swift`_
+  The token estimate only summed `message.content`, ignoring `toolCalls`
+  argument payloads. In tool-heavy sessions these can represent hundreds of
+  tokens per assistant message, causing the compressor to underestimate context
+  size and delay compression. Fix: added `toolCalls` argument character count
+  to the per-message estimate.
+
+---
+
 ## [0.1.0] — 2026-03-11
 
 Initial public release.

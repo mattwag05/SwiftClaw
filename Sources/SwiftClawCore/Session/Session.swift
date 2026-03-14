@@ -122,8 +122,14 @@ public actor Session {
         approvalDelegate: (any ToolApprovalDelegate)?,
         continuation: AsyncThrowingStream<SessionEvent, Error>.Continuation
     ) async throws {
-        // 1. Memory injection: rebuild system message with relevant remembered facts
+        // 1. Memory injection: rebuild system message with relevant remembered facts.
+        //    Always reset messages[0] to the base prompt first so stale memories
+        //    from a prior turn don't linger when this turn has no relevant hits.
         if config.memoryEnabled, let mem = memory {
+            let basePrompt = agent.configuration.systemPrompt
+            if !messages.isEmpty {
+                messages[0] = Message(role: .system, content: basePrompt)
+            }
             let relevant = (try? await mem.search(query: prompt, layer: nil, topK: 10)) ?? []
             let threshold: Float = 0.3
             let filtered = relevant.filter { $0.score >= threshold }
@@ -131,7 +137,6 @@ public actor Session {
                 let factsText = filtered.map { scored in
                     "- \(scored.entry.key): \(scored.entry.content) (score: \(String(format: "%.2f", scored.score)))"
                 }.joined(separator: "\n")
-                let basePrompt = agent.configuration.systemPrompt
                 let enriched = basePrompt + "\n\n## Relevant Memories\n" + factsText
                 if !messages.isEmpty {
                     messages[0] = Message(role: .system, content: enriched)
