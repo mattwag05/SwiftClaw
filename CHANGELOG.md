@@ -2,6 +2,24 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [4.4] — 2026-03-17
+
+### Bug fixes + P0 calendar tools
+
+**[bug]** `Version.swift` — corrected `SwiftClawVersion.version` from stale `"0.1.0"` to `"4.4.0"`; startup banner now reports the real version.
+
+**[bug]** `RunCommand.swift` — `SwiftClawConfig` fields `consolidationInterval` and `compressionTokenThreshold` were loaded from `~/.swiftclaw/config.json` but never applied to `SessionConfiguration`; config file changes now take effect.
+
+**[quality]** `MemoryConsolidator.swift` — added markdown code-fence stripping before JSON decode; prevents silent fallback-to-single-fact when the model wraps its response in ` ```json ` fences despite instructions.
+
+**[feature]** `CalendarEventsTool`, `CalendarCreateTool`, `CalendarSmartCreateTool` — three new `SwiftClawPippin` tools backed by `pippin calendar` (list events, create event, natural-language smart-create). All registered in `PippinToolFactory`. `CalendarCreateTool` and `CalendarSmartCreateTool` set `requiresConfirmation = true`. Roadmap: P0 Calendar tool exposure.
+
+**[test]** `PlaceholderTests.swift` — updated `versionExists()` assertion to expect `"4.4.0"`.
+
+**Summary:** 4 issues fixed, 1 feature added, 233/233 tests passing.
+
+---
+
 ## [4.3] — 2026-03-16
 
 ### SwiftUI polish

@@ -50,7 +50,13 @@ public struct MemoryConsolidator: Sendable {
             config: noToolConfig
         )
 
-        let raw = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        var raw = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip markdown code fences the model may add despite instructions (e.g. ```json...```)
+        if raw.hasPrefix("```") {
+            let lines = raw.components(separatedBy: "\n")
+            raw = lines.dropFirst().dropLast().joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
 
         struct RawEntry: Decodable {
             let key: String
