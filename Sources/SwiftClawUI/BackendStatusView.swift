@@ -4,11 +4,21 @@ public struct BackendStatusView: View {
     public let backendType: BackendType
     public let modelId: String
     public let state: BackendState
+    public let ramUsage: String
+    public let cpuUsage: String
 
-    public init(backendType: BackendType, modelId: String, state: BackendState) {
+    public init(
+        backendType: BackendType,
+        modelId: String,
+        state: BackendState,
+        ramUsage: String = "",
+        cpuUsage: String = ""
+    ) {
         self.backendType = backendType
         self.modelId = modelId
         self.state = state
+        self.ramUsage = ramUsage
+        self.cpuUsage = cpuUsage
     }
 
     public var body: some View {
@@ -50,7 +60,11 @@ public struct BackendStatusView: View {
         case .loading(let p): return "Loading \(Int(p * 100))%"
         case .ready:
             let shortModel = modelId.components(separatedBy: "/").last ?? modelId
-            return backendType == .mlx ? "On-Device · \(shortModel)" : shortModel
+            let modelLabel = backendType == .mlx ? "On-Device · \(shortModel)" : shortModel
+            if !ramUsage.isEmpty && !cpuUsage.isEmpty {
+                return "\(ramUsage) · CPU \(cpuUsage) · \(modelLabel)"
+            }
+            return modelLabel
         case .error: return "Error"
         }
     }

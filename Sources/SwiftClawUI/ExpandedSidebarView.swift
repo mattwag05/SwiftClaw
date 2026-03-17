@@ -1,9 +1,9 @@
 import SwiftUI
 import SwiftClawCore
 
-/// Expanded sidebar (~220pt) with full session rows.
+/// Expanded sidebar (~220pt) with time-grouped session rows.
 public struct ExpandedSidebarView<SettingsContent: View>: View {
-    public let sessions: [SessionSummary]
+    public let groups: [SessionGroup]
     @Binding public var selectedId: String?
     public let onNewChat: () -> Void
     public let onToggleExpand: () -> Void
@@ -11,14 +11,14 @@ public struct ExpandedSidebarView<SettingsContent: View>: View {
     @ViewBuilder public let settingsContent: () -> SettingsContent
 
     public init(
-        sessions: [SessionSummary],
+        groups: [SessionGroup],
         selectedId: Binding<String?>,
         onNewChat: @escaping () -> Void,
         onToggleExpand: @escaping () -> Void,
         onDelete: @escaping (String) -> Void,
         @ViewBuilder settingsContent: @escaping () -> SettingsContent
     ) {
-        self.sessions = sessions
+        self.groups = groups
         self._selectedId = selectedId
         self.onNewChat = onNewChat
         self.onToggleExpand = onToggleExpand
@@ -42,7 +42,7 @@ public struct ExpandedSidebarView<SettingsContent: View>: View {
 
                 Text("Chats")
                     .font(.system(.headline, design: .default))
-                    .foregroundStyle(Color.white.opacity(0.8))
+                    .foregroundStyle(Theme.sidebarLightText)
 
                 Spacer()
             }
@@ -72,25 +72,35 @@ public struct ExpandedSidebarView<SettingsContent: View>: View {
                 .frame(height: 1)
                 .padding(.horizontal, 12)
 
-            // Section label
-            if !sessions.isEmpty {
-                Text("RECENT")
-                    .font(.system(size: 9, design: .monospaced).weight(.medium))
-                    .foregroundStyle(Theme.sidebarDimText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
-            }
-
-            // Session list
+            // Time-grouped session list
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 2) {
-                    ForEach(sessions) { summary in
-                        sessionRow(summary)
-                            .contextMenu {
-                                Button("Delete", role: .destructive) { onDelete(summary.sessionId) }
-                            }
+                LazyVStack(spacing: 0, pinnedViews: []) {
+                    ForEach(groups) { group in
+                        // Section header
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(group.title.uppercased())
+                                .font(.system(size: 9, design: .monospaced).weight(.medium))
+                                .foregroundStyle(Theme.sidebarDimText)
+                            Text("·")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(Theme.sidebarDimText)
+                            Text(group.subtitle)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(Theme.sidebarDimText)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 10)
+                        .padding(.bottom, 4)
+
+                        // Sessions in this group
+                        ForEach(group.sessions) { summary in
+                            sessionRow(summary)
+                                .contextMenu {
+                                    Button("Delete", role: .destructive) { onDelete(summary.sessionId) }
+                                }
+                        }
                     }
                 }
                 .padding(.horizontal, 8)

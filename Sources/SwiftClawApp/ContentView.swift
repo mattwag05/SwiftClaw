@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
     @AppStorage("sidebarExpanded") private var sidebarExpanded = false
     @State private var showQuickSettings = false
+    @State private var metrics = SystemMetricsMonitor()
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -14,7 +15,7 @@ struct ContentView: View {
                 // Sidebar (rail or expanded)
                 if sidebarExpanded {
                     ExpandedSidebarView(
-                        sessions: viewModel.sessions,
+                        groups: viewModel.groupedSessions,
                         selectedId: $vm.selectedSessionId,
                         onNewChat: { Task { await viewModel.newChat() } },
                         onToggleExpand: { withAnimation(.easeInOut(duration: 0.2)) { sidebarExpanded.toggle() } },
@@ -55,7 +56,9 @@ struct ContentView: View {
                     BackendStatusView(
                         backendType: viewModel.backendType,
                         modelId: viewModel.modelId,
-                        state: viewModel.backendState
+                        state: viewModel.backendState,
+                        ramUsage: metrics.formattedRAM,
+                        cpuUsage: metrics.formattedCPU
                     )
                 }
 
@@ -73,6 +76,8 @@ struct ContentView: View {
             }
             .navigationTitle("SwiftClaw")
         }
+        .onAppear { metrics.start() }
+        .onDisappear { metrics.stop() }
         .alert("Error", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { if !$0 { viewModel.errorMessage = nil } }

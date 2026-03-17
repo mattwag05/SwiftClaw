@@ -91,7 +91,7 @@ struct ChatDetailView: View {
             }
             .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 20))
-            .shadow(color: Color(red: 0.04, green: 0.12, blue: 0.18).opacity(0.45), radius: 32, x: 0, y: 8)
+            .shadow(color: Color(red: 0.20, green: 0.15, blue: 0.10).opacity(0.15), radius: 32, x: 0, y: 8)
             .padding(16)
             .colorScheme(.light)
 
@@ -120,7 +120,7 @@ private struct DottedBackground: View {
                 Canvas { context, size in
                     let spacing: CGFloat = 22
                     let dotRadius: CGFloat = 1.4
-                    let color = Color.white.opacity(0.10)
+                    let color = Theme.primaryForeground.opacity(0.04)
                     var x: CGFloat = spacing
                     while x < size.width {
                         var y: CGFloat = spacing

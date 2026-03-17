@@ -2,39 +2,35 @@ import SwiftUI
 import AppKit
 
 /// Semantic design tokens for SwiftClawUI.
-/// Palette extracted from the SwiftClaw app icon:
-///   Sky blue  #4AABDF  — primary brand color
-///   Gold      #F5C842  — accent / highlight
-///   Deep blue #1A6FA8  — dark background / shadows
-///   Amber     #C87A30  — warm accent
+/// Warm russet-inspired palette — cream tones, sage accents, deep brown.
 public enum Theme {
 
     // MARK: - Brand palette
 
-    public static let brandBlue     = Color(hex: "#4AABDF")
-    public static let brandGold     = Color(hex: "#F5C842")
-    public static let brandDeepBlue = Color(hex: "#1A6FA8")
-    public static let brandAmber    = Color(hex: "#C87A30")
+    public static let brandBlue     = Color(hex: "#8B6F47")  // warm brown (was sky blue)
+    public static let brandGold     = Color(hex: "#6B8E5A")  // sage green (was yellow-gold)
+    public static let brandDeepBlue = Color(hex: "#5C4033")  // deep brown (was deep blue)
+    public static let brandAmber    = Color(hex: "#C87A30")  // warm amber (unchanged)
 
     // MARK: - Window / card
 
-    /// Dark deep-blue window background (matches icon background)
-    public static let windowBackground = Color(hex: "#0F2A3D")
+    /// Warm cream window background
+    public static let windowBackground = Color(hex: "#F5F0E8")
 
-    /// Floating light card background
-    public static let cardBackground = Color(red: 0.96, green: 0.97, blue: 0.98)
+    /// Warm white floating card background
+    public static let cardBackground = Color(hex: "#FFFDF8")
 
     public static let cardCornerRadius: CGFloat = 20
 
     // MARK: - Text (on light card)
 
-    public static let primaryForeground   = Color(hex: "#1A2530")
-    public static let secondaryForeground = Color(hex: "#1A2530").opacity(0.45)
+    public static let primaryForeground   = Color(hex: "#3B2F2F")
+    public static let secondaryForeground = Color(hex: "#3B2F2F").opacity(0.45)
 
     // MARK: - Chat bubbles
 
-    /// User bubble: brand blue pill
-    public static let userBubbleBackground = brandBlue
+    /// User bubble: sage green pill
+    public static let userBubbleBackground = brandGold
     public static let userBubbleForeground = Color.white
 
     /// Assistant: plain text on card, no bubble
@@ -42,21 +38,21 @@ public enum Theme {
 
     // MARK: - Status pill colors
 
-    public static let pillRunning    = Color(hex: "#4AABDF").opacity(0.15)
-    public static let pillRunningFG  = Color(hex: "#1A6FA8")
-    public static let pillPending    = Color(hex: "#F5C842").opacity(0.25)
-    public static let pillPendingFG  = Color(hex: "#8A6A00")
+    public static let pillRunning    = Color(hex: "#8B6F47").opacity(0.15)
+    public static let pillRunningFG  = Color(hex: "#5C4033")
+    public static let pillPending    = Color(hex: "#6B8E5A").opacity(0.25)
+    public static let pillPendingFG  = Color(hex: "#3D5C2E")
     public static let pillDone       = Color(hex: "#34C759").opacity(0.15)
     public static let pillDoneFG     = Color(hex: "#1A7A35")
     public static let pillError      = Color.red.opacity(0.12)
     public static let pillErrorFG    = Color(hex: "#C0392B")
-    public static let pillDenied     = Color.black.opacity(0.07)
-    public static let pillDeniedFG   = Color(hex: "#1A2530").opacity(0.4)
+    public static let pillDenied     = Color(hex: "#3B2F2F").opacity(0.07)
+    public static let pillDeniedFG   = Color(hex: "#3B2F2F").opacity(0.4)
 
     // MARK: - Input bar
 
-    public static let inputBackground  = Color.white
-    public static let separatorColor   = Color.black.opacity(0.08)
+    public static let inputBackground  = Color(hex: "#FFFDF8")
+    public static let separatorColor   = Color(hex: "#5C4033").opacity(0.10)
 
     // MARK: - Misc
 
@@ -85,11 +81,11 @@ public enum Theme {
     public static let railWidth: CGFloat     = 52
     public static let sidebarWidth: CGFloat  = 220
     public static let sidebarItemRadius: CGFloat = 8
-    public static let sidebarItemBackground  = Color.white.opacity(0.06)
+    public static let sidebarItemBackground  = Color(hex: "#5C4033").opacity(0.06)
     public static let sidebarSelectedRing    = brandGold
-    public static let sidebarDivider         = Color.white.opacity(0.08)
-    public static let sidebarLightText       = Color.white.opacity(0.7)
-    public static let sidebarDimText         = Color.white.opacity(0.35)
+    public static let sidebarDivider         = Color(hex: "#5C4033").opacity(0.12)
+    public static let sidebarLightText       = Color(hex: "#3B2F2F").opacity(0.85)
+    public static let sidebarDimText         = Color(hex: "#3B2F2F").opacity(0.40)
 
     // MARK: - Layout
 

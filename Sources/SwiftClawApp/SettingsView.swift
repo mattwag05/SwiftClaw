@@ -8,17 +8,15 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gear") }
             ModelSettingsTab()
                 .tabItem { Label("Model", systemImage: "slider.horizontal.3") }
-            AdaptersSettingsTab()
-                .tabItem { Label("Adapters", systemImage: "cpu") }
-            MemorySettingsTab()
-                .tabItem { Label("Memory", systemImage: "brain") }
-            ToolsSettingsTab()
-                .tabItem { Label("Tools", systemImage: "wrench.and.screwdriver") }
+            ToolsMemorySettingsTab()
+                .tabItem { Label("Tools & Memory", systemImage: "wrench.and.screwdriver") }
         }
-        .frame(width: 520, height: 360)
+        .frame(width: 540, height: 480)
         .padding()
     }
 }
+
+// MARK: - General
 
 struct GeneralSettingsTab: View {
     @Environment(ChatViewModel.self) private var viewModel
@@ -48,59 +46,160 @@ struct GeneralSettingsTab: View {
     }
 }
 
+// MARK: - Model
+
 struct ModelSettingsTab: View {
     @Environment(ChatViewModel.self) private var viewModel
+    @State private var showAdapters = false
 
     var body: some View {
         @Bindable var vm = viewModel
-        Form {
-            Slider(value: $vm.temperature, in: 0...2, step: 0.05) {
-                Text("Temperature (\(String(format: "%.2f", viewModel.temperature)))")
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
 
-            Stepper("Max Tokens: \(viewModel.maxTokens)", value: $vm.maxTokens, in: 256...16384, step: 256)
+                // Model Card
+                VStack(alignment: .leading, spacing: 10) {
+                    let shortName = viewModel.modelId.components(separatedBy: "/").last ?? viewModel.modelId
+                    Text(shortName)
+                        .font(.headline)
+                        .foregroundStyle(Theme.primaryForeground)
+
+                    Text(viewModel.modelDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.secondaryForeground)
+
+                    HStack(spacing: 6) {
+                        ForEach(viewModel.modelCapabilityBadges, id: \.self) { badge in
+                            Text(badge)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Theme.brandGold)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Theme.brandGold.opacity(0.12), in: Capsule())
+                        }
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Theme.separatorColor, lineWidth: 1)
+                )
+
+                // Storage
+                GroupBox("Storage") {
+                    VStack(spacing: 0) {
+                        storageRow(label: "Device Memory", value: viewModel.totalRAM)
+                        Divider().padding(.leading, 16)
+                        storageRow(label: "Model Cache", value: viewModel.modelCacheSize)
+                        Divider().padding(.leading, 16)
+                        storageRow(label: "Available Storage", value: viewModel.availableStorage)
+                    }
+                }
+
+                // Generation
+                GroupBox("Generation") {
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("Temperature (\(String(format: "%.2f", viewModel.temperature)))")
+                                .font(.subheadline)
+                            Spacer()
+                            Slider(value: $vm.temperature, in: 0...2, step: 0.05)
+                                .frame(width: 180)
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        Divider()
+                        Stepper("Max Tokens: \(viewModel.maxTokens)",
+                                value: $vm.maxTokens, in: 256...16384, step: 256)
+                            .font(.subheadline)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                    }
+                }
+
+                // Adapters (collapsible)
+                GroupBox {
+                    DisclosureGroup("Adapters", isExpanded: $showAdapters) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle("Auto-select best adapter", isOn: $vm.autoAdapter)
+                                .font(.subheadline)
+
+                            if !viewModel.autoAdapter {
+                                Picker("Adapter", selection: $vm.selectedAdapter) {
+                                    Text("None (base model)").tag(String?.none)
+                                    ForEach(viewModel.adapters, id: \.name) { adapter in
+                                        Text(adapter.name).tag(Optional(adapter.name))
+                                    }
+                                }
+                                .font(.subheadline)
+                            }
+
+                            HStack {
+                                Button("Refresh") { Task { await viewModel.refreshAdapters() } }
+                                    .buttonStyle(.bordered)
+                                if viewModel.adapters.isEmpty {
+                                    Text("No adapters. Train with `swiftclaw train`.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .formStyle(.grouped)
+        .task { await viewModel.refreshStorageMetrics() }
+    }
+
+    @ViewBuilder
+    private func storageRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(Theme.primaryForeground)
+            Spacer()
+            Text(value)
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(Theme.secondaryForeground)
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 8)
     }
 }
 
-struct AdaptersSettingsTab: View {
+// MARK: - Tools & Memory
+
+struct ToolsMemorySettingsTab: View {
     @Environment(ChatViewModel.self) private var viewModel
 
     var body: some View {
         @Bindable var vm = viewModel
         Form {
-            Toggle("Auto-select best adapter", isOn: $vm.autoAdapter)
+            Section("Memory") {
+                Toggle("Enable agent memory", isOn: $vm.memoryEnabled)
 
-            if !viewModel.autoAdapter {
-                Picker("Adapter", selection: $vm.selectedAdapter) {
-                    Text("None (base model)").tag(String?.none)
-                    ForEach(viewModel.adapters, id: \.name) { adapter in
-                        Text(adapter.name).tag(Optional(adapter.name))
+                if viewModel.memoryEnabled {
+                    Text("Memory database: ~/.swiftclaw/memory/memories.db")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    embeddingStateView
+
+                    Button("Re-index Embeddings") {
+                        Task { await viewModel.reindexMemory() }
                     }
+                    .help("Clears stored embedding vectors and re-embeds all memories.")
                 }
             }
 
-            Button("Refresh") {
-                Task { await viewModel.refreshAdapters() }
-            }
-
-            if viewModel.adapters.isEmpty {
-                Text("No adapters found. Train one with `swiftclaw train`.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-    }
-}
-
-struct ToolsSettingsTab: View {
-    @Environment(ChatViewModel.self) private var viewModel
-
-    var body: some View {
-        @Bindable var vm = viewModel
-        Form {
             Section("Require Approval") {
                 if viewModel.toolApprovalOverrides.isEmpty {
                     Text("Start a chat to load tools.")
@@ -114,36 +213,9 @@ struct ToolsSettingsTab: View {
                         ))
                     }
                 }
-            }
-            Text("Dangerous tools require approval by default. Toggle to override.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .formStyle(.grouped)
-    }
-}
-
-struct MemorySettingsTab: View {
-    @Environment(ChatViewModel.self) private var viewModel
-
-    var body: some View {
-        @Bindable var vm = viewModel
-        Form {
-            Toggle("Enable agent memory", isOn: $vm.memoryEnabled)
-
-            if viewModel.memoryEnabled {
-                Text("Memory database: ~/.swiftclaw/memory/memories.db")
+                Text("Dangerous tools require approval by default.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
-                Section("Embedding Provider") {
-                    embeddingStateView
-                }
-
-                Button("Re-index Embeddings") {
-                    Task { await viewModel.reindexMemory() }
-                }
-                .help("Clears stored embedding vectors and re-embeds all memories with the current provider.")
             }
         }
         .formStyle(.grouped)
@@ -158,8 +230,7 @@ struct MemorySettingsTab: View {
                 .foregroundStyle(.secondary)
         case .loading(let pct):
             HStack {
-                ProgressView()
-                    .scaleEffect(0.7)
+                ProgressView().scaleEffect(0.7)
                 Text("Loading nomic-embed model (\(Int(pct * 100))%)…")
                     .font(.caption)
                     .foregroundStyle(.secondary)

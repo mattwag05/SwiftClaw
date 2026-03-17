@@ -16,7 +16,10 @@ import SwiftClawUI
 final class ChatViewModel {
 
     // MARK: Sidebar / session list
-    var sessions: [SessionSummary] = []
+    var sessions: [SessionSummary] = [] {
+        didSet { groupedSessions = SessionGrouper.group(sessions) }
+    }
+    var groupedSessions: [SessionGroup] = []
     var selectedSessionId: String? = nil
 
     // MARK: Active chat
@@ -502,6 +505,90 @@ final class ChatViewModel {
 
         isGenerating = false
     }
+
+    // MARK: - Model Info
+
+    static let modelDescriptions: [String: String] = [
+        "mlx-community/Qwen3.5-9B-MLX-4bit":          "Created by Alibaba Cloud. 9B params, 4-bit quantized.",
+        "mlx-community/Qwen2.5-7B-Instruct-4bit":      "Created by Alibaba Cloud. 7B params, 4-bit quantized.",
+        "mlx-community/Llama-3.2-3B-Instruct-4bit":    "Meta Llama 3.2, 3B params, 4-bit quantized.",
+        "mlx-community/Llama-3.3-70B-Instruct-4bit":   "Meta Llama 3.3, 70B params, 4-bit quantized.",
+        "mlx-community/Mistral-7B-Instruct-v0.3-4bit": "Created by Mistral AI. 7B params, 4-bit quantized.",
+        "mlx-community/phi-4-4bit":                    "Created by Microsoft. 14B params, 4-bit quantized.",
+    ]
+
+    var modelDescription: String {
+        Self.modelDescriptions[modelId] ?? "On-device language model."
+    }
+
+    private static let paramPattern: NSRegularExpression? =
+        try? NSRegularExpression(pattern: "-(\\d+(?:\\.\\d+)?[bB])-?", options: [])
+
+    var modelCapabilityBadges: [String] {
+        var badges: [String] = []
+        badges.append(backendType == .mlx ? "On-Device" : "HTTP")
+        let lower = modelId.lowercased()
+        if lower.contains("4bit") || lower.contains("4-bit") { badges.append("4-bit") }
+        if lower.contains("8bit") || lower.contains("8-bit") { badges.append("8-bit") }
+        // Extract param count like "9B", "70B", "3B", "7B", "14B"
+        let range = NSRange(modelId.startIndex..., in: modelId)
+        if let match = Self.paramPattern?.firstMatch(in: modelId, range: range),
+           let r = Range(match.range(at: 1), in: modelId) {
+            badges.append(String(modelId[r]).uppercased())
+        }
+        return badges
+    }
+
+    var totalRAM: String {
+        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
+        return "\(Int(gb.rounded())) GB"
+    }
+
+    var modelCacheSize: String = "—"
+    var availableStorage: String = "—"
+
+    func refreshStorageMetrics() async {
+        let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("models")
+
+        // Directory walk is slow — offload to background thread
+        let sizeTask = Task.detached(priority: .userInitiated) { () -> Int64 in
+            guard let url = cacheURL else { return 0 }
+            return ChatViewModel.directorySize(at: url)
+        }
+
+        // Volume query is fast — run while background task proceeds
+        if let values = try? URL(fileURLWithPath: NSHomeDirectory())
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+           let bytes = values.volumeAvailableCapacityForImportantUsage {
+            availableStorage = ChatViewModel.formatBytes(Int64(bytes))
+        }
+
+        let size = await sizeTask.value
+        if size > 0 { modelCacheSize = ChatViewModel.formatBytes(size) }
+    }
+
+    private nonisolated static func directorySize(at url: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            total += Int64((try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+        return total
+    }
+
+    private nonisolated static func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    // MARK: - Bubble Rebuild
 
     private func rebuildBubbles(from msgs: [Message]) {
         var bubbles: [ChatBubble] = []
