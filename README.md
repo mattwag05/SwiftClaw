@@ -8,9 +8,9 @@ A macOS-first, Swift-native AI agent framework with on-device MLX inference. Pri
 
 ## Overview
 
-SwiftClaw lets you build agentic applications in Swift that run fully on-device using Apple Silicon. It handles the agentic loop (prompt → LLM → tool calls → results → loop), exposes a clean protocol-based tool system, and talks to local MLX models via [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm).
+SwiftClaw lets you build agentic applications in Swift that run fully on-device using Apple Silicon. It handles the agentic loop (prompt → LLM → tool calls → results → loop), exposes a clean protocol-based tool system, and talks to local MLX models via [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm). An HTTP backend targets OpenAI-compatible APIs (Ollama, etc.) for non-MLX use.
 
-**Philosophy (GrimClaw-aligned):** All model weights and agent state stay local by default. No vendor lock-in — agents are Swift code + config, not tied to a cloud SDK.
+**Philosophy:** All model weights and agent state stay local by default. No vendor lock-in — agents are Swift code + config, not tied to a cloud SDK.
 
 ## Requirements
 
@@ -22,32 +22,56 @@ SwiftClaw lets you build agentic applications in Swift that run fully on-device 
 ## Quick Start
 
 ```bash
-# Build
+# Build (debug — sufficient for HTTP backend and tests)
 swift build
+
+# MLX inference requires a release build + colocated metallib
+swift build -c release
+# Copy mlx.metallib (see MLX Setup below)
+.build/release/swiftclaw run
+
+# HTTP/Ollama backend (no metallib needed)
+.build/release/swiftclaw run --backend http --api-url http://localhost:11434/v1
 
 # Check system compatibility
 swift run swiftclaw doctor
 
 # List available tools
 swift run swiftclaw tools
-
-# Start interactive Sysop Agent session
-swift run swiftclaw run
 ```
 
-The first `run` downloads the default model (`mlx-community/Qwen3.5-9B-MLX-4bit`, ~5GB) from Hugging Face.
+The first `run` with the MLX backend downloads the default model (`mlx-community/Qwen3.5-9B-MLX-4bit`, ~5GB) from Hugging Face.
+
+## MLX Setup (one-time)
+
+```bash
+swift build -c release
+# Find mlx version from Package.resolved, then:
+pip install --target /tmp/mlx-metallib mlx==<version>
+cp /tmp/mlx-metallib/mlx/core/mlx.metallib .build/release/
+.build/release/swiftclaw run
+```
 
 ## Package Structure
 
 ```
 SwiftClaw/
   Sources/
-    SwiftClawCore/      # Agent runtime, session, tool protocol, model backend protocol
-    SwiftClawMLX/       # Concrete MLX backend using mlx-swift-lm
-    SwiftClawTools/     # Built-in tools (system info, disk, processes, shell)
-    swiftclaw/          # CLI executable
+    SwiftClawCore/      # Agent runtime, session, tool protocol, model backend protocol, memory protocol
+    SwiftClawMLX/       # MLX backend, LoRA training, adapter management, A/B eval, MLX embedding engine
+    SwiftClawHTTP/      # OpenAI-compatible HTTP backend (Foundation-only, targets Ollama/OpenAI)
+    SwiftClawTools/     # Built-in tools (sysadmin, file ops, environment)
+    SwiftClawMemory/    # Semantic memory — SQLite+FTS5 via GRDB, hybrid retrieval, EmbeddingEngine
+    SwiftClawPippin/    # Pippin CLI wrappers (mail + memos tools)
+    SwiftClawUI/        # SwiftUI components (chat view, sidebar, tool approval, settings)
+    SwiftClawApp/       # macOS app target — SwiftUI wrapper around SwiftClawCore
+    swiftclaw/          # CLI executable (ArgumentParser)
   Tests/
     SwiftClawCoreTests/
+    SwiftClawHTTPTests/
+    SwiftClawMemoryTests/
+    SwiftClawMLXTests/
+    SwiftClawPippinTests/
     SwiftClawToolsTests/
 ```
 
@@ -55,9 +79,14 @@ SwiftClaw/
 
 | Target | Purpose |
 |--------|---------|
-| `SwiftClawCore` | Core types: `Agent`, `Session` actor, `SwiftClawTool` protocol, `ModelBackend` protocol, `JSONSchema` |
-| `SwiftClawMLX` | `MLXBackend` — wraps mlx-swift-lm's `ModelContainer` |
-| `SwiftClawTools` | Drop-in tools: `SystemInfoTool`, `DiskSpaceTool`, `ProcessListTool`, `ShellTool` |
+| `SwiftClawCore` | Core types: `Agent`, `Session` actor, `SwiftClawTool` protocol, `ModelBackend` protocol, `MemoryProvider` protocol, `JSONSchema`, `ContextCompressor`, `TraceExporter` |
+| `SwiftClawMLX` | `MLXBackend` — on-device inference via mlx-swift-lm; `LoRATrainer`, `AdapterStore`, `AdapterSelector`, `EvalStore`, `MLXEmbeddingEngine` |
+| `SwiftClawHTTP` | `HTTPBackend` — OpenAI-compatible REST + SSE; Foundation-only, no third-party networking |
+| `SwiftClawTools` | Drop-in tools: sysadmin (4), file (4), environment (3); `SwiftClawToolFactory.allTools(config:)` |
+| `SwiftClawMemory` | `MemoryStore` actor (GRDB+FTS5, two-layer working/longTerm), `EmbeddingEngine` (hash-based 768-dim), `MemoryRetriever` (hybrid scoring); `MemoryToolFactory.allTools(store:)` |
+| `SwiftClawPippin` | Pippin CLI wrappers — 6 mail tools + 3 memos tools; gracefully absent if binary not found |
+| `SwiftClawUI` | Reusable SwiftUI components: streaming chat, sidebar, tool approval, settings popover |
+| `SwiftClawApp` | macOS app — `@Observable` agent state, shares `FileSessionStore` with the CLI |
 
 ## Defining an Agent
 
@@ -76,12 +105,9 @@ let agent = Agent(configuration: AgentConfiguration(
 ))
 
 let session = Session(agent: agent, backend: backend)
-let events = await session.respond(to: "How much disk space do I have?")
-for try await event in events {
-    switch event {
-    case let .textDelta(text): print(text, terminator: "")
-    case .done: print()
-    default: break
+for try await event in session.respond(to: "How much disk space do I have?") {
+    if case let .textDelta(text) = event {
+        print(text, terminator: "")
     }
 }
 ```
@@ -107,32 +133,85 @@ struct GreetTool: SwiftClawTool {
 }
 ```
 
-## Built-in Tools (Sysop Agent)
+## Built-in Tools
+
+### Sysadmin (SwiftClawTools)
 
 | Tool | Description |
 |------|-------------|
 | `system_info` | Hostname, CPU cores, memory, macOS version |
 | `disk_space` | Total, used, and free disk space for any path |
 | `process_list` | Running processes sorted by memory usage |
-| `shell` | Sandboxed shell execution (allowlist-based) |
+| `shell` | Sandboxed shell execution (allowlist + redirect/pipe guard) |
 
-The `shell` tool runs through `ShellSandbox` which rejects pipes, redirects, command substitution, and disallowed commands.
+### File Operations (SwiftClawTools)
+
+| Tool | Description |
+|------|-------------|
+| `read_file` | Read file contents within sandbox paths |
+| `write_file` | Write or replace file contents within sandbox paths |
+| `list_directory` | List directory contents |
+| `find_files` | Recursive file search by name pattern |
+
+### Environment (SwiftClawTools)
+
+| Tool | Description |
+|------|-------------|
+| `env_vars` | Read environment variables |
+| `date_time` | Current date, time, and timezone |
+| `clipboard` | Read macOS clipboard contents |
+
+### Memory (SwiftClawMemory — enabled with `--memory`)
+
+| Tool | Description |
+|------|-------------|
+| `memory_write` | Store a fact or note in semantic memory |
+| `memory_read` | Retrieve a memory entry by ID |
+| `memory_search` | Hybrid semantic + BM25 search across memory |
+| `memory_delete` | Remove a memory entry by ID |
+
+### Pippin Mail (SwiftClawPippin)
+
+| Tool | Description |
+|------|-------------|
+| `mail_list` | List messages in a mailbox |
+| `mail_show` | Read a specific message |
+| `mail_search` | Search messages by query, date range, sender |
+| `mail_send` | Compose and send a message |
+| `mail_mark` | Mark messages as read/unread/flagged |
+| `mail_move` | Move messages between mailboxes |
+
+### Pippin Memos (SwiftClawPippin)
+
+| Tool | Description |
+|------|-------------|
+| `memos_list` | List voice memos |
+| `memos_info` | Get metadata for a memo |
+| `memos_transcribe` | Transcribe a voice memo |
 
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `swiftclaw run [--model ID] [--max-tokens N]` | Interactive Sysop Agent REPL |
+| `swiftclaw run [--backend mlx\|http] [--api-url URL] [--session ID] [--adapter PATH] [--auto-adapter] [--memory]` | Interactive agent REPL |
 | `swiftclaw tools [--json]` | List registered tools |
-| `swiftclaw doctor` | Check MLX availability and system compatibility |
+| `swiftclaw doctor` | System diagnostics (MLX, model cache, memory DB, config) |
+| `swiftclaw sessions list\|show\|delete\|export <id>` | Session management + LoRA trace export |
+| `swiftclaw train --name <n> --sessions <id1,id2> [--iterations N]` | Train a LoRA adapter from session traces |
+| `swiftclaw adapters list\|delete\|tag <name>` | Adapter lifecycle management |
+| `swiftclaw eval "prompt" [--adapter-a <n>] --adapter-b <n>` | A/B evaluation between base model and adapters |
+| `swiftclaw download [--model ID]` | Pre-download a model to the cache |
 
 ## Architecture
 
 - **`Session` is an actor** — owns the mutable conversation array; data-race-safe by default
 - **`Agent` is a struct** — immutable config + tool registry; freely `Sendable`
-- **`ModelBackend` is a protocol** — swap in an HTTP backend (e.g., pi-mono) without changing the agentic loop
+- **`ModelBackend` is a protocol** — swap MLX for HTTP without changing the agentic loop
+- **`MemoryProvider` is a protocol** — swap in any memory backend; `MemoryStore` is the default (SQLite+FTS5 via GRDB)
 - **Tool arguments are JSON strings** — avoids `Any` which isn't `Sendable`
 - **Swift 6 strict concurrency** — no workarounds; compiles clean with zero warnings
+- **Two-layer memory** — working memory per-session, promoted to longTerm on `endSession()`; hybrid retrieval (semantic 0.5 + BM25 0.25 + recency 0.15 + frequency 0.10)
+- **LoRA fine-tuning** — export sessions as JSONL training traces, train adapters via `MLXOptimizers`, A/B eval against base model
 
 ## Running Tests
 
@@ -140,12 +219,13 @@ The `shell` tool runs through `ShellSandbox` which rejects pipes, redirects, com
 swift test
 ```
 
-175 tests across all test targets. Core tests use a `MockBackend` — no model download needed.
+233 tests across 6 test targets. Core tests use a `MockBackend` — no model download needed.
 
 ## Roadmap
 
-- **v0.1.0** (current): Core runtime, MLX backend, Sysop Agent CLI
-- **v1**: iOS support, pi-mono adapter, persistent memory, local agent templates
+- **v4.3** (current): Warm russet palette, time-grouped sidebar, live status bar, richer settings
+- iOS support
+- Remote/cloud model backends
 
 ## License
 

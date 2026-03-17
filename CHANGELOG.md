@@ -2,39 +2,105 @@
 
 All notable changes to SwiftClaw are documented here.
 
-## [Unreleased] — 2026-03-14
+## [4.3] — 2026-03-16
 
-### Audit pass — bugs, reliability, token efficiency
+### SwiftUI polish
 
-**Issues found:** 3
-**Issues fixed:** 3
-**Deferred:** 0
+- Warm russet color palette throughout the macOS app
+- Time-grouped sidebar (Today / Yesterday / This Week / Older)
+- Live status bar showing token count, model, and backend
+- Richer settings popover with memory and adapter controls
 
-#### Changes
+---
 
-- **[bug] `Session`: stale memories persist in system prompt across turns**
-  _Files: `Sources/SwiftClawCore/Session/Session.swift`_
-  When turn N injected relevant memories into `messages[0]` but turn N+1 had no
-  matching memories, the enriched system message from turn N was never reset.
-  Stale memories could silently bias the model's responses for the rest of the
-  session. Fix: always reset `messages[0]` to `agent.configuration.systemPrompt`
-  before the memory search so stale injections are cleared even when the new
-  turn produces no hits.
+## [4.2] — 2026-03-14
 
-- **[quality] `ToolRegistry.init(tools:)`: fatal crash on duplicate tool names**
-  _Files: `Sources/SwiftClawCore/Tool/ToolRegistry.swift`_
-  `Dictionary(uniqueKeysWithValues:)` throws a Swift fatal error (process crash)
-  if two tools share a name — a realistic risk when combining multiple
-  `ToolFactory` arrays. Replaced with an explicit loop that emits a stderr
-  warning and keeps the first registration, preventing startup crashes.
+### SwiftUI settings persistence + download command
 
-- **[token] `ContextCompressor.estimateTokens()`: tool-call arguments not counted**
-  _Files: `Sources/SwiftClawCore/Memory/ContextCompressor.swift`_
-  The token estimate only summed `message.content`, ignoring `toolCalls`
-  argument payloads. In tool-heavy sessions these can represent hundreds of
-  tokens per assistant message, causing the compressor to underestimate context
-  size and delay compression. Fix: added `toolCalls` argument character count
-  to the per-message estimate.
+- SwiftUI app persists backend, model, sandbox, and memory settings to `~/.swiftclaw/config.json`
+- `swiftclaw download [--model ID]` command pre-downloads a model to the cache without starting a session
+
+---
+
+## [4.1] — 2026-03-12
+
+### MLX embedding model
+
+- `EmbeddingProvider` protocol in `SwiftClawCore` — actor-constrained, `nonisolated var dimensions`
+- `MLXEmbeddingEngine` in `SwiftClawMLX` — lazy-loads `nomic-ai/nomic-embed-text-v1.5` via `MLXEmbedders`; gracefully degrades to hash-based fallback on load failure
+- `MemoryStore` accepts `(any EmbeddingProvider)?`; dimension-mismatch guard prevents stale vector comparisons
+- `MemoryStore.reindex()` — nulls embeddings and schedules background re-embedding after engine swap
+- `RunCommand` wires `MLXEmbeddingEngine` for `--backend mlx --memory`; hash fallback for HTTP
+
+---
+
+## [4.0] — 2026-03-12
+
+### Semantic memory system
+
+- New `SwiftClawMemory` SPM target
+- `MemoryStore` actor — SQLite + FTS5 via GRDB; two-layer architecture (working / longTerm); JSON migration from legacy `*.json` files
+- `EmbeddingEngine` — deterministic hash-based 768-dim vectors
+- `MemoryRetriever` — hybrid scoring: semantic × 0.5 + BM25 × 0.25 + recency × 0.15 + frequency × 0.10
+- `MemoryProvider` protocol in `SwiftClawCore` — replaces `AgentMemory` actor
+- 4 memory tools via `MemoryToolFactory.allTools(store:)`: `memory_write`, `memory_read`, `memory_search`, `memory_delete`
+- `Session.endSession()` promotes working → longTerm and clears working layer
+- `--memory` flag on `swiftclaw run` enables two-layer memory
+- REPL commands: `/memory`, `/memory search <query>`, `/memory clear working`, `/memory clear all`
+
+---
+
+## [3.0] — 2026-03-10
+
+### macOS SwiftUI app
+
+- New `SwiftClawUI` and `SwiftClawApp` SPM targets
+- Real-time streaming chat with thinking/reasoning block display
+- Collapsible sidebar with session list
+- Tool call approval UI
+- Quick settings popover (backend, model, sandbox paths)
+- Suggestion chips for empty state
+- Shares `FileSessionStore` with the CLI — sessions visible in both interfaces
+
+---
+
+## [2.3] — 2026-03-09
+
+### Adapter auto-select and A/B evaluation
+
+- `AdapterSelector` — scores adapters by tag overlap (60%), validation loss (25%), recency (15%)
+- `--auto-adapter` flag on `swiftclaw run` selects the best adapter automatically
+- `swiftclaw eval "prompt" [--adapter-a <n>] --adapter-b <n>` — side-by-side A/B eval; prompts for winner `[A/B/tie/skip]`
+- `EvalStore` — persists results to `~/.swiftclaw/evals/<epoch>.json`
+- `swiftclaw adapters tag <name> --add "..." --remove "..."` — tag lifecycle
+
+---
+
+## [2.2] — 2026-03-08
+
+### LoRA fine-tuning from agent traces
+
+- `TraceExporter` in `SwiftClawCore` — exports sessions as LoRA training JSONL (tool-call turns filtered)
+- `swiftclaw sessions export <id>` — export CLI subcommand
+- `LoRATrainer` in `SwiftClawMLX` — trains adapters via `MLXOptimizers`; stores to `~/.swiftclaw/adapters/<name>/`
+- `AdapterStore` — adapter metadata and lifecycle management
+- `swiftclaw train --name <n> --sessions <id1,id2> [--iterations N]`
+- `swiftclaw adapters list/delete`
+- `--adapter <path>` flag on `swiftclaw run` (MLX only)
+
+---
+
+## [2.1] — 2026-03-08
+
+### Security hardening and agentic loop improvements
+
+- Supply-chain hardening against dependency injection attacks
+- `ToolRegistry.execute` wraps execution in do/catch; returns `.failure(...)` on throws
+- `ToolRegistry.definitions` sorted by name for deterministic LLM tool ordering
+- `Session.runLoop` enforces `maxTotalMessages` by trimming oldest non-system messages
+- `DoctorCommand` pass/fail tracking; shows all tools via factories
+- REPL `/help` and `/tools` commands added
+- Unnamed sessions no longer auto-saved to disk
 
 ---
 
@@ -48,19 +114,13 @@ Initial public release.
 - `SwiftClawTool` protocol for custom tool definitions with JSON schema
 - `ToolRegistry` for tool registration and dispatch
 - `SessionStore` protocol + `FileSessionStore` for persistent sessions (`~/.swiftclaw/sessions/`)
-- `AgentMemory` actor for persistent key-value agent memory (`~/.swiftclaw/memory/`)
 - `ContextCompressor` and `MemoryConsolidator` for long-context handling
 - `ToolApprovalDelegate` protocol for interactive tool approval flows
-- `TraceExporter` for exporting sessions as LoRA training JSONL
 
 ### MLX Backend (`SwiftClawMLX`)
 - Native on-device inference via `mlx-swift-lm` (no Python runtime)
 - Streaming generation with `AsyncThrowingStream<StreamChunk, Error>`
 - `Qwen35ToolCallParser` — fallback `<tool_call>` / `<function=...>` block parser for Qwen3.5
-- `LoRATrainer` — train adapters from exported session JSONL via `MLXOptimizers`
-- `AdapterStore` — adapter metadata lifecycle in `~/.swiftclaw/adapters/`
-- `AdapterSelector` — scores adapters by tag overlap (60%), validation loss (25%), recency (15%)
-- `EvalStore` — A/B eval result persistence in `~/.swiftclaw/evals/`
 
 ### HTTP Backend (`SwiftClawHTTP`)
 - OpenAI-compatible HTTP backend targeting Ollama and OpenAI APIs
@@ -80,20 +140,9 @@ Initial public release.
 - Memos tools: `memos_list`, `memos_info`, `memos_transcribe`
 - Gracefully returns empty tool list if `pippin` binary is absent
 
-### macOS App (`SwiftClawApp`)
-- SwiftUI app sharing the same `SessionStore` as the CLI
-- Real-time streaming chat with thinking/reasoning display
-- Collapsible sidebar with session list
-- Tool call approval UI
-- Quick settings popover (backend, model, sandbox)
-- Suggestion chips for empty state
-
 ### CLI (`swiftclaw`)
-- `run` — interactive REPL with session persistence, backend selection, adapter loading
-- `sessions list/show/delete/export` — session management
-- `train` — LoRA adapter training from exported sessions
-- `adapters list/delete/tag` — adapter lifecycle
-- `eval` — A/B evaluation between base model and adapters
+- `run` — interactive REPL with session persistence and backend selection
+- `sessions list/show/delete` — session management
 - `tools` — list registered tools
 - `doctor` — system diagnostics (MLX, model cache, config)
 
