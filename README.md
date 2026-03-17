@@ -224,8 +224,37 @@ swift test
 ## Roadmap
 
 - **v4.3** (current): Warm russet palette, time-grouped sidebar, live status bar, richer settings
+
+**Near-term (P0 — Week 1-2):**
+- Prompt caching for HTTP backend (stable system prompt + user-injected skills → 50%+ API cost reduction)
+- Calendar tool exposure in SwiftClawPippin (`CalendarEventsTool`, `CalendarCreateTool`, `CalendarSmartCreateTool`)
+- Sentinel process monitoring (replace `sleep` startup hacks with `__READY__` marker polling)
+
+**Short-term (P1 — Month 1):**
+- Two-layer memory: wire `AgentMemory` into the session loop with MEMORY.md consolidation (nanobot/hermes pattern)
+- Hash-anchored file edits — line-hash tagging makes `write_file`/`edit` stale-safe on large files
+- Lazy skill loading — send skill summaries first; fetch full content on demand
+- Credential proxy — secrets intercepted before tool execution; prevents key leakage into LoRA training data
+- Apple Container sandbox for `shell` tool (macOS 26 native, replaces `FileSandbox`)
+- Per-conversation FIFO queue (prevents concurrent session corruption)
+
+**Mid-term (P2 — Month 2-3):**
+- Vision OCR for macOS GUI automation (Vision.framework + `screencapture`; fixes JXA fragility on Electron apps)
+- MCP client integration (standard Anthropic protocol; 200+ external tool servers)
+- Cross-provider conversation handoff — `ContextTranslator` protocol for MLX → HTTP fallback mid-conversation
+- JSONL session branching (tree-structured; avoids duplication on forks)
+- Background parallel agent execution
+- Metric-driven LoRA adapter iteration loop (autoresearch-style keep/revert on val_bpb metric)
+- Token counting for HTTP backend (cost visibility and limit warnings)
+
+**Long-term (P3):**
 - iOS support
 - Remote/cloud model backends
+- Subagent parallelism (actor-isolated subagents)
+- 3-tier context assembly (recent messages + retrieved memories + agent CLAUDE.md)
+- GrimClaw ↔ SwiftClaw HTTP bridge (Pi agent delegates macOS tasks to SwiftClaw)
+- A2UI Canvas (agent-generated SwiftUI views in the app canvas panel)
+- agentskills.io standard migration (YAML frontmatter + markdown skills for ecosystem compatibility)
 
 ## License
 
