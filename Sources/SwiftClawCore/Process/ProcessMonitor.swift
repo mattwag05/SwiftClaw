@@ -167,15 +167,25 @@ public actor ProcessMonitor {
                 }
 
                 // ── Ready-marker watch ────────────────────────────────────────────────
-                // nonisolated(unsafe) flag — ensures the continuation is resumed exactly once
-                // across the readabilityHandler GCD queue and the timeout DispatchWorkItem.
+                // resumeQueue serializes the resume-once check across the two
+                // uncoordinated GCD queues (readabilityHandler's private queue and the
+                // timeout DispatchWorkItem on DispatchQueue.global()).
+                // nonisolated(unsafe) is still required — `resumed` is a non-Sendable
+                // var captured across contexts — but is now protected by the mutex.
+                let resumeQueue = DispatchQueue(label: "com.swiftclaw.process-\(id)-resume")
                 nonisolated(unsafe) var resumed = false
                 nonisolated(unsafe) var lineBuffer = ""
 
                 // Timeout work item — fires if the marker isn't seen in time.
                 let timeoutItem = DispatchWorkItem {
-                    guard !resumed else { return }
-                    resumed = true
+                    var shouldResume = false
+                    resumeQueue.sync {
+                        if !resumed {
+                            resumed = true
+                            shouldResume = true
+                        }
+                    }
+                    guard shouldResume else { return }
                     stdoutHandle.readabilityHandler = nil
                     Task { await self.updateState(id: id, state: .failed("Timeout waiting for '\(marker)'")) }
                     continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
@@ -191,8 +201,14 @@ public actor ProcessMonitor {
                     if data.isEmpty {
                         // EOF — process exited before the ready marker was seen.
                         fh.readabilityHandler = nil
-                        guard !resumed else { return }
-                        resumed = true
+                        var shouldResume = false
+                        resumeQueue.sync {
+                            if !resumed {
+                                resumed = true
+                                shouldResume = true
+                            }
+                        }
+                        guard shouldResume else { return }
                         timeoutItem.cancel()
                         // terminationStatus is safe to read here: EOF on the pipe
                         // means the write end is closed, which only happens after exit.
@@ -211,8 +227,14 @@ public actor ProcessMonitor {
 
                     for line in lines where !line.isEmpty {
                         Task { await self.appendOutput(id: id, line: line) }
-                        if !resumed, line.contains(marker) {
-                            resumed = true
+                        var shouldResume = false
+                        resumeQueue.sync {
+                            if !resumed, line.contains(marker) {
+                                resumed = true
+                                shouldResume = true
+                            }
+                        }
+                        if shouldResume {
                             timeoutItem.cancel()
                             fh.readabilityHandler = nil
                             Task { await self.updateState(id: id, state: .ready) }
