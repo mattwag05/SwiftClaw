@@ -24,4 +24,14 @@ public enum SwiftClawToolFactory {
             ClipboardTool(),
         ]
     }
+
+    /// Returns the 4 sentinel process monitoring tools bound to the given monitor.
+    public static func processTools(monitor: ProcessMonitor) -> [any SwiftClawTool] {
+        [
+            StartProcessTool(monitor: monitor),
+            ProcessOutputTool(monitor: monitor),
+            StopProcessTool(monitor: monitor),
+            ListMonitoredProcessesTool(monitor: monitor),
+        ]
+    }
 }

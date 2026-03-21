@@ -13,6 +13,7 @@ public actor Session {
     public let sessionId: String?
     private var isRunning: Bool = false
     private let approvalDelegate: (any ToolApprovalDelegate)?
+    private let processMonitor: ProcessMonitor?
 
     // Memory support (optional)
     private let memory: (any MemoryProvider)?
@@ -27,7 +28,8 @@ public actor Session {
         config: SessionConfiguration = SessionConfiguration(),
         sessionId: String? = nil,
         memory: (any MemoryProvider)? = nil,
-        approvalDelegate: (any ToolApprovalDelegate)? = nil
+        approvalDelegate: (any ToolApprovalDelegate)? = nil,
+        processMonitor: ProcessMonitor? = nil
     ) {
         self.agent = agent
         self.backend = backend
@@ -35,6 +37,7 @@ public actor Session {
         self.sessionId = sessionId
         self.memory = memory
         self.approvalDelegate = approvalDelegate
+        self.processMonitor = processMonitor
         self.consolidator = MemoryConsolidator()
         self.compressor = ContextCompressor()
         self.messages = [
@@ -51,7 +54,8 @@ public actor Session {
         sessionId: String,
         restoredMessages: [Message],
         memory: (any MemoryProvider)? = nil,
-        approvalDelegate: (any ToolApprovalDelegate)? = nil
+        approvalDelegate: (any ToolApprovalDelegate)? = nil,
+        processMonitor: ProcessMonitor? = nil
     ) {
         self.agent = agent
         self.backend = backend
@@ -59,6 +63,7 @@ public actor Session {
         self.sessionId = sessionId
         self.memory = memory
         self.approvalDelegate = approvalDelegate
+        self.processMonitor = processMonitor
         self.consolidator = MemoryConsolidator()
         self.compressor = ContextCompressor()
         self.messages = restoredMessages
@@ -394,8 +399,12 @@ public actor Session {
         return result
     }
 
-    /// End the session: promote working memories to long-term, clear working layer, cancel background tasks.
+    /// End the session: promote working memories to long-term, clear working layer, cancel background tasks,
+    /// and stop all monitored processes.
     public func endSession() async {
+        // Shutdown all monitored processes
+        await processMonitor?.shutdown()
+
         guard let mem = memory, sessionId != nil, config.memoryEnabled else { return }
         // Promote working memories to long-term
         let workingEntries = await mem.allEntries(layer: .working)

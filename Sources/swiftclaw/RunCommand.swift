@@ -108,8 +108,11 @@ struct RunCommand: AsyncParsableCommand {
         } else {
             agentMemory = nil
         }
+        let processMonitor = ProcessMonitor()
         var tools: [any SwiftClawTool] =
-            SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
+            SwiftClawToolFactory.allTools(config: config)
+            + PippinToolFactory.allTools()
+            + SwiftClawToolFactory.processTools(monitor: processMonitor)
         if let memStore = agentMemory {
             tools += MemoryToolFactory.allTools(store: memStore)
         }
@@ -153,7 +156,8 @@ struct RunCommand: AsyncParsableCommand {
                     config: sessionConfig,
                     sessionId: sessionId,
                     restoredMessages: restored.messages,
-                    memory: agentMemory
+                    memory: agentMemory,
+                    processMonitor: processMonitor
                 )
                 let count = restored.messages.filter { $0.role == .user }.count
                 print("Resumed session '\(sessionId)' (\(count) prior turns).\n")
@@ -163,7 +167,8 @@ struct RunCommand: AsyncParsableCommand {
                     backend: resolvedBackend,
                     config: sessionConfig,
                     sessionId: sessionId,
-                    memory: agentMemory
+                    memory: agentMemory,
+                    processMonitor: processMonitor
                 )
                 print("Started new session '\(sessionId)'.\n")
             }
@@ -173,7 +178,8 @@ struct RunCommand: AsyncParsableCommand {
                 agent: agent,
                 backend: resolvedBackend,
                 config: sessionConfig,
-                memory: agentMemory
+                memory: agentMemory,
+                processMonitor: processMonitor
             )
         }
 
@@ -200,7 +206,7 @@ struct RunCommand: AsyncParsableCommand {
             }
             if trimmed == "/help" {
                 let memCmd = memory ? "  /memory  " : ""
-                print("Commands: /help  /tools\(memCmd)  /quit  /exit")
+                print("Commands: /help  /tools\(memCmd)  /processes  /quit  /exit")
                 continue
             }
             if trimmed == "/memory" || trimmed.hasPrefix("/memory ") {
@@ -240,6 +246,44 @@ struct RunCommand: AsyncParsableCommand {
                             print("- \(entry.key): \(entry.content)")
                         }
                     }
+                }
+                continue
+            }
+            if trimmed == "/processes" || trimmed.hasPrefix("/processes ") {
+                if trimmed == "/processes" {
+                    let procs = await processMonitor.list()
+                    if procs.isEmpty {
+                        print("No monitored processes.")
+                    } else {
+                        for p in procs {
+                            let stateStr: String
+                            switch p.state {
+                            case .launching: stateStr = "launching"
+                            case .ready: stateStr = "ready"
+                            case .failed(let msg): stateStr = "failed: \(msg)"
+                            case .stopped(let code): stateStr = "stopped (exit \(code))"
+                            }
+                            let pid = p.pid.map { " [pid \($0)]" } ?? ""
+                            print("  \(p.id.prefix(8)): \(stateStr)\(pid)  \(p.command)")
+                        }
+                    }
+                } else if trimmed.hasPrefix("/processes stop ") {
+                    let id = String(trimmed.dropFirst("/processes stop ".count)).trimmingCharacters(in: .whitespaces)
+                    do {
+                        try await processMonitor.stop(id: id)
+                        print("Process stopped.")
+                    } catch {
+                        print("Error: \(error.localizedDescription)")
+                    }
+                } else if trimmed.hasPrefix("/processes show ") {
+                    let id = String(trimmed.dropFirst("/processes show ".count)).trimmingCharacters(in: .whitespaces)
+                    if let lines = await processMonitor.output(id: id) {
+                        print(lines.joined(separator: "\n"))
+                    } else {
+                        print("Process not found: \(id)")
+                    }
+                } else {
+                    print("Unknown /processes subcommand. Usage: /processes  /processes stop <id>  /processes show <id>")
                 }
                 continue
             }
