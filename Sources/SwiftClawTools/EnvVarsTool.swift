@@ -5,7 +5,7 @@ import SwiftClawCore
 public struct EnvVarsTool: SwiftClawTool {
     public let name = "env_vars"
     public let description =
-        "Read environment variables. Provide a `name` for a single variable, or omit it for a sorted dump of all variables."
+        "Read environment variables. Provide a `name` for a single variable, or omit it for a sorted dump of all variables. Variables matching common credential patterns (KEY, SECRET, TOKEN, PASSWORD, etc.) are redacted in bulk dumps."
 
     public let parameterSchema: JSONSchema = .object(
         properties: [
@@ -18,6 +18,17 @@ public struct EnvVarsTool: SwiftClawTool {
 
     private struct Arguments: Decodable {
         var name: String?
+    }
+
+    /// Substrings that indicate a variable likely contains credentials or secrets.
+    private static let sensitiveSubstrings: [String] = [
+        "KEY", "SECRET", "TOKEN", "PASSWORD", "PASSWD", "CREDENTIAL",
+        "PRIVATE", "AUTH", "ACCESS", "SESSION", "CERT", "SIGNING",
+    ]
+
+    private func isSensitive(_ name: String) -> Bool {
+        let upper = name.uppercased()
+        return Self.sensitiveSubstrings.contains { upper.contains($0) }
     }
 
     public func execute(arguments: String) async throws -> ToolResult {
@@ -33,7 +44,9 @@ public struct EnvVarsTool: SwiftClawTool {
 
         let sorted = ProcessInfo.processInfo.environment
             .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
+            .map { key, value in
+                isSensitive(key) ? "\(key)=<redacted>" : "\(key)=\(value)"
+            }
             .joined(separator: "\n")
         return .success(sorted)
     }

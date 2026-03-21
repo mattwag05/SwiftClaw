@@ -20,11 +20,13 @@ extension ModelBackend {
         var text = ""
         var toolCalls: [ToolCallRequest] = []
         var finishReason: StreamChunk.FinishReason = .stop
+        var tokenUsage: TokenUsage?
 
         for try await chunk in generate(messages: messages, tools: tools, config: config) {
             if let t = chunk.text { text += t }
             if let tc = chunk.toolCalls { toolCalls.append(contentsOf: tc) }
             if let fr = chunk.finishReason { finishReason = fr }
+            if let tu = chunk.tokenUsage { tokenUsage = tu }
         }
 
         // Strip Qwen3.5 tool call XML blocks (emitted when fallback parser fires).
@@ -62,7 +64,8 @@ extension ModelBackend {
         return GenerationResponse(
             content: text,
             toolCalls: toolCalls,
-            finishReason: finishReason
+            finishReason: finishReason,
+            tokenUsage: tokenUsage
         )
     }
 }

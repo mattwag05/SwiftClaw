@@ -151,3 +151,17 @@ import Testing
     let result = try await tool.execute(arguments: "{\"command\":\"rm -rf /\"}")
     #expect(result.isError)
 }
+
+@Test func shellSandboxRejectsPathTraversalDotDotSlash() {
+    let sandbox = ShellSandbox()
+    #expect(throws: ShellSandboxError.self) {
+        try sandbox.validate(command: "cat ../../../etc/passwd")
+    }
+}
+
+@Test func shellSandboxRejectsPathTraversalSlashDotDot() {
+    let sandbox = ShellSandbox()
+    #expect(throws: ShellSandboxError.self) {
+        try sandbox.validate(command: "ls /tmp/..")
+    }
+}

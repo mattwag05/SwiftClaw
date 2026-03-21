@@ -1,7 +1,7 @@
 import Foundation
 import SwiftClawCore
 
-/// Factory for pippin-backed tools (mail + memos).
+/// Factory for pippin-backed tools (mail + memos + calendar).
 /// Returns an empty array if the pippin binary is not installed.
 public enum PippinToolFactory {
     public static func allTools() -> [any SwiftClawTool] {
@@ -18,6 +18,9 @@ public enum PippinToolFactory {
             MemosListTool(runner: runner),
             MemosInfoTool(runner: runner),
             MemosTranscribeTool(runner: runner),
+            CalendarEventsTool(runner: runner),
+            CalendarCreateTool(runner: runner),
+            CalendarSmartCreateTool(runner: runner),
         ]
     }
 }

@@ -38,6 +38,23 @@ struct EnvironmentToolsTests {
         #expect(result.content.contains("="))
     }
 
+    @Test("env_vars redacts sensitive variable names in bulk dump")
+    func envVarsToolRedactsSensitive() async throws {
+        let tool = EnvVarsTool()
+        let result = try await tool.execute(arguments: "{}")
+        #expect(!result.isError)
+        // Any line whose name contains a sensitive pattern must show <redacted>
+        let lines = result.content.components(separatedBy: "\n")
+        for line in lines {
+            guard let eqIdx = line.firstIndex(of: "=") else { continue }
+            let varName = String(line[line.startIndex..<eqIdx]).uppercased()
+            let sensitivePatterns = ["KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL"]
+            if sensitivePatterns.contains(where: { varName.contains($0) }) {
+                #expect(line.hasSuffix("=<redacted>"), "Sensitive var must be redacted: \(line)")
+            }
+        }
+    }
+
     // MARK: - DateTimeTool
 
     @Test("date_time has correct name")

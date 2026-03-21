@@ -10,9 +10,9 @@ public struct ShellSandbox: Sendable {
         "sysctl", "diskutil", "system_profiler", "ioreg",
     ]
 
-    /// Characters/patterns that indicate shell injection attempts.
+    /// Characters/patterns that indicate shell injection or path traversal attempts.
     private static let dangerousPatterns: [String] = [
-        "|", ";", "&&", "||", "`", "$(", ">", "<",
+        "|", ";", "&&", "||", "`", "$(", ">", "<", "../", "/..",
     ]
 
     let allowlist: Set<String>

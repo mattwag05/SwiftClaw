@@ -2,6 +2,44 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [4.5] — 2026-03-21
+
+### Security hardening + token counting + parallel tools
+
+**[security]** `ShellSandbox.swift` — added `"../"` and `"/.."` to `dangerousPatterns`; path traversal arguments (e.g. `cat ../../../etc/passwd`) now throw `dangerousPattern` before the allowlist check. Two new tests confirm rejection.
+
+**[security]** `EnvVarsTool.swift` — bulk env dump now redacts variables whose names contain credential patterns (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `PRIVATE`, `AUTH`, `ACCESS`, `SESSION`, `CERT`, `SIGNING`). Individual named lookups are unaffected. One new test validates redaction.
+
+**[bug]** `MemoryConsolidator.swift` — removed malformed-LLM fallback that stored raw model output as a fact when JSON decoding failed. Malformed responses are now silently dropped, preventing garbage entries in the memory store. Updated `consolidatorFallsBackOnInvalidJSON` → `consolidatorDropsSilentlyOnInvalidJSON` test to assert empty return.
+
+**[feature]** `StreamChunk.swift`, `Response.swift`, `ModelBackend.swift`, `OpenAITypes.swift`, `HTTPBackend.swift`, `Session.swift` — end-to-end token usage tracking for the HTTP backend. `TokenUsage` struct (promptTokens, completionTokens, totalTokens) added to `StreamChunk` and `GenerationResponse`. `HTTPBackend` now sends `stream_options: {include_usage: true}` and parses the final usage-only SSE chunk. Usage flows through `Session.runLoop` into every `.turn` event. One new test verifies SSE usage chunk parsing.
+
+**[feature]** `Session.swift` — parallel tool execution when no approval delegate is present. Multiple tool calls in a single turn now execute concurrently via `withThrowingTaskGroup`; results are re-ordered by original call index before being appended to history. Sequential execution is preserved for approval-delegate flows to maintain interactive ordering.
+
+**[test]** `PlaceholderTests.swift` (Core), `MemoryConsolidatorTests.swift`, `PlaceholderTests.swift` (Tools), `EnvironmentToolsTests.swift`, `HTTPBackendTests.swift` — 4 new tests, 1 renamed test; total count 237 (was 233).
+
+**Summary:** 2 security fixes, 1 bug fix, 2 features added, 237/237 tests passing.
+
+---
+
+## [4.4] — 2026-03-17
+
+### Bug fixes + P0 calendar tools
+
+**[bug]** `Version.swift` — corrected `SwiftClawVersion.version` from stale `"0.1.0"` to `"4.4.0"`; startup banner now reports the real version.
+
+**[bug]** `RunCommand.swift` — `SwiftClawConfig` fields `consolidationInterval` and `compressionTokenThreshold` were loaded from `~/.swiftclaw/config.json` but never applied to `SessionConfiguration`; config file changes now take effect.
+
+**[quality]** `MemoryConsolidator.swift` — added markdown code-fence stripping before JSON decode; prevents silent fallback-to-single-fact when the model wraps its response in ` ```json ` fences despite instructions.
+
+**[feature]** `CalendarEventsTool`, `CalendarCreateTool`, `CalendarSmartCreateTool` — three new `SwiftClawPippin` tools backed by `pippin calendar` (list events, create event, natural-language smart-create). All registered in `PippinToolFactory`. `CalendarCreateTool` and `CalendarSmartCreateTool` set `requiresConfirmation = true`. Roadmap: P0 Calendar tool exposure.
+
+**[test]** `PlaceholderTests.swift` — updated `versionExists()` assertion to expect `"4.4.0"`.
+
+**Summary:** 4 issues fixed, 1 feature added, 233/233 tests passing.
+
+---
+
 ## [4.3] — 2026-03-16
 
 ### SwiftUI polish

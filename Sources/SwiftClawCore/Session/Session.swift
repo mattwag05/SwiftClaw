@@ -199,6 +199,7 @@ public actor Session {
             var sawThinkEnd = false
             var accumulatedToolCalls: [ToolCallRequest] = []
             var finishReason: StreamChunk.FinishReason = .stop
+            var tokenUsage: TokenUsage?
 
             let stream: AsyncThrowingStream<StreamChunk, Error> = backend.generate(
                 messages: messages,
@@ -242,6 +243,7 @@ public actor Session {
                 }
                 if let tc = chunk.toolCalls { accumulatedToolCalls.append(contentsOf: tc) }
                 if let fr = chunk.finishReason { finishReason = fr }
+                if let tu = chunk.tokenUsage { tokenUsage = tu }
             }
 
             // If no </think> found, flush each buffered chunk individually as text deltas
@@ -268,7 +270,8 @@ public actor Session {
             let response = GenerationResponse(
                 content: cleanText,
                 toolCalls: accumulatedToolCalls,
-                finishReason: finishReason
+                finishReason: finishReason,
+                tokenUsage: tokenUsage
             )
             lastResponse = response
 
@@ -308,8 +311,9 @@ public actor Session {
                 return
             }
 
-            for call in response.toolCalls {
-                if let delegate = approvalDelegate {
+            if let delegate = approvalDelegate {
+                // Sequential execution — approval checks require user interaction in order.
+                for call in response.toolCalls {
                     continuation.yield(.toolCallPending(id: call.id, name: call.name, arguments: call.arguments))
                     let approved = await delegate.shouldExecute(
                         toolName: call.name, callId: call.id, arguments: call.arguments
@@ -323,17 +327,48 @@ public actor Session {
                         ))
                         continue
                     }
+                    continuation.yield(.toolCallStart(id: call.id, name: call.name))
+                    let result = try await agent.toolRegistry.execute(
+                        name: call.name, arguments: call.arguments
+                    )
+                    continuation.yield(.toolResult(id: call.id, result))
+                    messages.append(Message(
+                        role: .tool,
+                        content: result.content,
+                        toolCallId: call.id
+                    ))
                 }
-                continuation.yield(.toolCallStart(id: call.id, name: call.name))
-                let result = try await agent.toolRegistry.execute(
-                    name: call.name, arguments: call.arguments
-                )
-                continuation.yield(.toolResult(id: call.id, result))
-                messages.append(Message(
-                    role: .tool,
-                    content: result.content,
-                    toolCallId: call.id
-                ))
+            } else {
+                // Parallel execution — emit starts upfront, run tools concurrently,
+                // then emit results in original call order.
+                for call in response.toolCalls {
+                    continuation.yield(.toolCallStart(id: call.id, name: call.name))
+                }
+                typealias IndexedResult = (index: Int, call: ToolCallRequest, result: ToolResult)
+                let toolRegistry = agent.toolRegistry
+                var collectedResults: [IndexedResult] = []
+                try await withThrowingTaskGroup(of: IndexedResult.self) { group in
+                    for (index, call) in response.toolCalls.enumerated() {
+                        group.addTask {
+                            let result = try await toolRegistry.execute(
+                                name: call.name, arguments: call.arguments
+                            )
+                            return (index, call, result)
+                        }
+                    }
+                    for try await r in group {
+                        collectedResults.append(r)
+                    }
+                }
+                let ordered = collectedResults.sorted { $0.index < $1.index }
+                for (_, call, result) in ordered {
+                    continuation.yield(.toolResult(id: call.id, result))
+                    messages.append(Message(
+                        role: .tool,
+                        content: result.content,
+                        toolCallId: call.id
+                    ))
+                }
             }
         }
 
