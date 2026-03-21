@@ -136,10 +136,12 @@ final class ChatViewModel {
                     return
                 }
                 let httpModel = modelId == "mlx-community/Qwen3.5-9B-MLX-4bit" ? "qwen2.5:7b" : modelId
+                let config = (try? SwiftClawConfig.load()) ?? .default
                 backend = HTTPBackend(
                     baseURL: url,
                     model: httpModel,
-                    apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey
+                    apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey,
+                    cacheMode: config.cacheMode
                 )
                 backendState = .ready
             }

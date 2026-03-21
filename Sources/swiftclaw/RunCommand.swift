@@ -47,6 +47,9 @@ struct RunCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Enable memory consolidation — persist facts across turns.")
     var memory: Bool = false
 
+    @Option(name: .long, help: "Prompt caching mode: none, anthropic, openai (HTTP backend only).")
+    var cacheModeStr: String?
+
     mutating func run() async throws {
         print("SwiftClaw \(SwiftClawVersion.version)")
 
@@ -83,7 +86,9 @@ struct RunCommand: AsyncParsableCommand {
                 throw ValidationError("Invalid API URL: \(apiUrl)")
             }
             let httpModel = model == SwiftClawVersion.defaultModelId ? "qwen2.5:7b" : model
-            resolvedBackend = HTTPBackend(baseURL: url, model: httpModel, apiKey: apiKey)
+            let config0 = (try? SwiftClawConfig.load()) ?? .default
+            let cacheMode = cacheModeStr.flatMap(CacheMode.init(rawValue:)) ?? config0.cacheMode
+            resolvedBackend = HTTPBackend(baseURL: url, model: httpModel, apiKey: apiKey, cacheMode: cacheMode)
             print("Using HTTP backend: \(apiUrl) (model: \(httpModel))\n")
         }
 
@@ -287,6 +292,11 @@ struct RunCommand: AsyncParsableCommand {
                             print(response.content)
                         } else if response.toolCalls.isEmpty {
                             fputs("\u{001B}[2m[empty response]\u{001B}[0m\n", stderr)
+                        }
+                        if let usage = response.tokenUsage, usage.cacheReadTokens != nil || usage.cacheCreationTokens != nil {
+                            let read = usage.cacheReadTokens ?? 0
+                            let creation = usage.cacheCreationTokens ?? 0
+                            fputs("\u{001B}[2m[cache: \(read) read, \(creation) created]\u{001B}[0m\n", stderr)
                         }
                     case .done:
                         print()
