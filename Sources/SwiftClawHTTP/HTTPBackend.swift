@@ -53,6 +53,20 @@ public struct HTTPBackend: ModelBackend {
 
     // MARK: - Private
 
+    private var isAnthropicEndpoint: Bool {
+        endpoint.absoluteString.contains("anthropic.com")
+    }
+
+    private var effectiveCacheMode: CacheMode {
+        switch cacheMode {
+        case .anthropic:
+            // Only apply Anthropic-specific encoding when actually talking to Anthropic
+            return isAnthropicEndpoint ? .anthropic : .none
+        default:
+            return cacheMode
+        }
+    }
+
     private func stream(
         messages: [Message],
         tools: [ToolDefinition],
@@ -155,7 +169,7 @@ public struct HTTPBackend: ModelBackend {
         let openAIMessages: [OpenAIMessage]
         var openAITools = tools.isEmpty ? nil : tools.map { OpenAIToolDefinition(from: $0) }
 
-        if cacheMode == .anthropic {
+        if effectiveCacheMode == .anthropic {
             // Build messages with Anthropic content blocks for system message
             openAIMessages = messages.enumerated().map { _, message in
                 if message.role == .system {
@@ -213,7 +227,7 @@ public struct HTTPBackend: ModelBackend {
         if let key = apiKey {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         }
-        if cacheMode == .anthropic {
+        if effectiveCacheMode == .anthropic {
             request.setValue("prompt-caching-2024-07-31", forHTTPHeaderField: "anthropic-beta")
         }
         request.httpBody = try JSONEncoder().encode(body)

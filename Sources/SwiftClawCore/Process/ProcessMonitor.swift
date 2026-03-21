@@ -276,6 +276,13 @@ public actor ProcessMonitor {
         }
         let pid = managed.pid  // Int32 — Sendable, safe across await
 
+        // Guard against placeholder pid — process hasn't started yet.
+        // kill(0, sig) sends to the entire process group; remove and return safely.
+        guard pid != 0 else {
+            processes.removeValue(forKey: id)
+            return
+        }
+
         // Update state and remove from registry before yielding to the executor.
         processes[id]?.info.state = .stopped(-1)
         processes.removeValue(forKey: id)
