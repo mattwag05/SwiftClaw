@@ -136,6 +136,8 @@ struct RunCommand: AsyncParsableCommand {
         if let threshold = config.compressionTokenThreshold {
             sessionConfig.compressionTokenThreshold = threshold
         }
+        sessionConfig.retrievalTopK = config.retrievalTopK
+        sessionConfig.retrievalThreshold = config.retrievalThreshold
 
         if memory { print("Memory enabled\n") }
         if let sessionId = session {

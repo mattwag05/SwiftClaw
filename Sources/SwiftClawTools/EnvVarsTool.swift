@@ -5,7 +5,7 @@ import SwiftClawCore
 public struct EnvVarsTool: SwiftClawTool {
     public let name = "env_vars"
     public let description =
-        "Read environment variables. Provide a `name` for a single variable, or omit it for a sorted dump of all variables. Variables matching common credential patterns (KEY, SECRET, TOKEN, PASSWORD, etc.) are redacted in bulk dumps."
+        "Read environment variables. Provide a `name` for a single variable, or omit it for a sorted dump of all variables. Variables whose names suggest credentials (API keys, tokens, passwords, secrets) have their values redacted."
 
     public let parameterSchema: JSONSchema = .object(
         properties: [
@@ -16,19 +16,19 @@ public struct EnvVarsTool: SwiftClawTool {
 
     public init() {}
 
-    private struct Arguments: Decodable {
-        var name: String?
-    }
-
-    /// Substrings that indicate a variable likely contains credentials or secrets.
-    private static let sensitiveSubstrings: [String] = [
+    /// Substrings that flag a variable as potentially sensitive.
+    private static let sensitivePatterns: [String] = [
         "KEY", "SECRET", "TOKEN", "PASSWORD", "PASSWD", "CREDENTIAL",
         "PRIVATE", "AUTH", "ACCESS", "SESSION", "CERT", "SIGNING",
     ]
 
-    private func isSensitive(_ name: String) -> Bool {
+    private static func isSensitive(_ name: String) -> Bool {
         let upper = name.uppercased()
-        return Self.sensitiveSubstrings.contains { upper.contains($0) }
+        return sensitivePatterns.contains { upper.contains($0) }
+    }
+
+    private struct Arguments: Decodable {
+        var name: String?
     }
 
     public func execute(arguments: String) async throws -> ToolResult {
@@ -36,7 +36,8 @@ public struct EnvVarsTool: SwiftClawTool {
 
         if let name = args.name {
             if let value = ProcessInfo.processInfo.environment[name] {
-                return .success("\(name)=\(value)")
+                let display = Self.isSensitive(name) ? "<redacted>" : value
+                return .success("\(name)=\(display)")
             } else {
                 return .failure("Environment variable '\(name)' is not set")
             }
@@ -45,7 +46,7 @@ public struct EnvVarsTool: SwiftClawTool {
         let sorted = ProcessInfo.processInfo.environment
             .sorted { $0.key < $1.key }
             .map { key, value in
-                isSensitive(key) ? "\(key)=<redacted>" : "\(key)=\(value)"
+                Self.isSensitive(key) ? "\(key)=<redacted>" : "\(key)=\(value)"
             }
             .joined(separator: "\n")
         return .success(sorted)

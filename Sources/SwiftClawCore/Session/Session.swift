@@ -130,12 +130,11 @@ public actor Session {
             if !messages.isEmpty {
                 messages[0] = Message(role: .system, content: basePrompt)
             }
-            let relevant = (try? await mem.search(query: prompt, layer: nil, topK: 10)) ?? []
-            let threshold: Float = 0.3
-            let filtered = relevant.filter { $0.score >= threshold }
+            let relevant = (try? await mem.search(query: prompt, layer: nil, topK: config.retrievalTopK)) ?? []
+            let filtered = relevant.filter { $0.score >= config.retrievalThreshold }
             if !filtered.isEmpty {
                 let factsText = filtered.map { scored in
-                    "- \(scored.entry.key): \(scored.entry.content) (score: \(String(format: "%.2f", scored.score)))"
+                    "- \(scored.entry.key): \(scored.entry.content)"
                 }.joined(separator: "\n")
                 let enriched = basePrompt + "\n\n## Relevant Memories\n" + factsText
                 if !messages.isEmpty {

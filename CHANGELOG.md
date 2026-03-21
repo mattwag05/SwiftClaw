@@ -4,21 +4,29 @@ All notable changes to SwiftClaw are documented here.
 
 ## [4.5] — 2026-03-21
 
-### Security hardening + token counting + parallel tools
+### Security hardening + token counting + parallel tools + audit fixes
 
 **[security]** `ShellSandbox.swift` — added `"../"` and `"/.."` to `dangerousPatterns`; path traversal arguments (e.g. `cat ../../../etc/passwd`) now throw `dangerousPattern` before the allowlist check. Two new tests confirm rejection.
 
-**[security]** `EnvVarsTool.swift` — bulk env dump now redacts variables whose names contain credential patterns (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `PRIVATE`, `AUTH`, `ACCESS`, `SESSION`, `CERT`, `SIGNING`). Individual named lookups are unaffected. One new test validates redaction.
+**[security]** `EnvVarsTool.swift` — all env var lookups (bulk dump and single-variable) now redact variables whose names contain credential patterns (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `PRIVATE`, `AUTH`, `ACCESS`, `SESSION`, `CERT`, `SIGNING`). One new test validates bulk redaction.
 
 **[bug]** `MemoryConsolidator.swift` — removed malformed-LLM fallback that stored raw model output as a fact when JSON decoding failed. Malformed responses are now silently dropped, preventing garbage entries in the memory store. Updated `consolidatorFallsBackOnInvalidJSON` → `consolidatorDropsSilentlyOnInvalidJSON` test to assert empty return.
+
+**[bug]** `MemoryStore.swift` — `promote(keys:)` now calls `scheduleEmbedding` after each promotion so promoted entries receive embeddings and score correctly in semantic search instead of always returning 0.0.
+
+**[bug]** `Session.swift` + `SessionConfiguration.swift` — memory retrieval injection previously hardcoded `topK: 10` and `threshold: 0.3`, ignoring `SwiftClawConfig` values. `SessionConfiguration` now carries `retrievalTopK` and `retrievalThreshold`; `RunCommand` and `ChatViewModel` propagate config-file values through.
 
 **[feature]** `StreamChunk.swift`, `Response.swift`, `ModelBackend.swift`, `OpenAITypes.swift`, `HTTPBackend.swift`, `Session.swift` — end-to-end token usage tracking for the HTTP backend. `TokenUsage` struct (promptTokens, completionTokens, totalTokens) added to `StreamChunk` and `GenerationResponse`. `HTTPBackend` now sends `stream_options: {include_usage: true}` and parses the final usage-only SSE chunk. Usage flows through `Session.runLoop` into every `.turn` event. One new test verifies SSE usage chunk parsing.
 
 **[feature]** `Session.swift` — parallel tool execution when no approval delegate is present. Multiple tool calls in a single turn now execute concurrently via `withThrowingTaskGroup`; results are re-ordered by original call index before being appended to history. Sequential execution is preserved for approval-delegate flows to maintain interactive ordering.
 
-**[test]** `PlaceholderTests.swift` (Core), `MemoryConsolidatorTests.swift`, `PlaceholderTests.swift` (Tools), `EnvironmentToolsTests.swift`, `HTTPBackendTests.swift` — 4 new tests, 1 renamed test; total count 237 (was 233).
+**[quality]** `ContextCompressor.swift` — `estimateTokens` now sums `content.count + toolCallChars` (arguments + name) before dividing by 4, preventing systematic under-counting in tool-heavy sessions that could delay compression and risk context overflow.
 
-**Summary:** 2 security fixes, 1 bug fix, 2 features added, 237/237 tests passing.
+**[quality]** `MemoryStore.swift` — `search` now captures `layerVal` in the scored tuple at scoring time, eliminating O(n×k) `MemoryEntry` allocations in the access-count update loop.
+
+**[test]** 4 new tests, 1 renamed test; total count 237 (was 233).
+
+**Summary:** 2 security fixes, 3 bug fixes, 2 features added, 2 quality improvements, 237/237 tests passing.
 
 ---
 
