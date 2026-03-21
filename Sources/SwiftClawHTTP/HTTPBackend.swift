@@ -9,7 +9,10 @@ public struct HTTPBackend: ModelBackend {
     private let endpoint: URL
     private let model: String
     private let apiKey: String?
-    private let cacheMode: CacheMode
+    /// The resolved cache mode after auto-detection and endpoint validation.
+    /// `.anthropic` is downgraded to `.none` when the endpoint is not `anthropic.com`,
+    /// preventing Anthropic-specific content blocks from being sent to Ollama or other servers.
+    private let effectiveCacheMode: CacheMode
 
     /// - Parameters:
     ///   - baseURL: Base URL of the API, e.g. `http://localhost:11434/v1`
@@ -20,12 +23,11 @@ public struct HTTPBackend: ModelBackend {
         self.endpoint = baseURL.appendingPathComponent("chat/completions")
         self.model = model
         self.apiKey = apiKey
-        // Auto-detect Anthropic from URL
-        if cacheMode == .none && baseURL.absoluteString.contains("anthropic.com") {
-            self.cacheMode = .anthropic
-        } else {
-            self.cacheMode = cacheMode
-        }
+        let isAnthropic = baseURL.absoluteString.contains("anthropic.com")
+        // Auto-detect: use .anthropic when URL matches and no explicit mode was set.
+        let resolved: CacheMode = (cacheMode == .none && isAnthropic) ? .anthropic : cacheMode
+        // Downgrade: explicit .anthropic on a non-Anthropic endpoint would send incompatible headers.
+        self.effectiveCacheMode = (resolved == .anthropic && !isAnthropic) ? .none : resolved
     }
 
     public func generate(
@@ -52,20 +54,6 @@ public struct HTTPBackend: ModelBackend {
     }
 
     // MARK: - Private
-
-    private var isAnthropicEndpoint: Bool {
-        endpoint.absoluteString.contains("anthropic.com")
-    }
-
-    private var effectiveCacheMode: CacheMode {
-        switch cacheMode {
-        case .anthropic:
-            // Only apply Anthropic-specific encoding when actually talking to Anthropic
-            return isAnthropicEndpoint ? .anthropic : .none
-        default:
-            return cacheMode
-        }
-    }
 
     private func stream(
         messages: [Message],

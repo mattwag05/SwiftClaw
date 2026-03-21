@@ -33,13 +33,7 @@ public struct ProcessOutputTool: SwiftClawTool {
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             processId = try c.decode(String.self, forKey: .processId)
-            if let i = try? c.decodeIfPresent(Int.self, forKey: .tail) {
-                tail = i
-            } else if let s = try? c.decodeIfPresent(String.self, forKey: .tail) {
-                tail = Int(s)
-            } else {
-                tail = nil
-            }
+            tail = try c.decodeIntOrStringIfPresent(forKey: .tail)
         }
     }
 

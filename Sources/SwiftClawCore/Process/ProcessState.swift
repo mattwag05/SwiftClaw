@@ -8,6 +8,17 @@ public enum ProcessState: Sendable, Equatable {
     case stopped(Int32)  // exit code
 }
 
+extension ProcessState: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .launching:           return "launching"
+        case .ready:               return "ready"
+        case .failed(let msg):     return "failed: \(msg)"
+        case .stopped(let code):   return "stopped (exit \(code))"
+        }
+    }
+}
+
 /// Snapshot of a monitored process.
 public struct MonitoredProcess: Sendable {
     public let id: String

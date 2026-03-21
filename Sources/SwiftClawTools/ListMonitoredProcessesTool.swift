@@ -21,16 +21,9 @@ public struct ListMonitoredProcessesTool: SwiftClawTool {
             return .success("No monitored processes.")
         }
         let lines = procs.map { p -> String in
-            let stateStr: String
-            switch p.state {
-            case .launching: stateStr = "launching"
-            case .ready: stateStr = "ready"
-            case .failed(let msg): stateStr = "failed: \(msg)"
-            case .stopped(let code): stateStr = "stopped (exit \(code))"
-            }
             let pidStr = p.pid.map { " [pid \($0)]" } ?? ""
             let argsStr = p.args.isEmpty ? "" : " " + p.args.joined(separator: " ")
-            return "ID: \(p.id)  state: \(stateStr)\(pidStr)  \(p.command)\(argsStr)"
+            return "ID: \(p.id)  state: \(p.state)\(pidStr)  \(p.command)\(argsStr)"
         }
         return .success(lines.joined(separator: "\n"))
     }

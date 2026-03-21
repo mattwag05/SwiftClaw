@@ -256,15 +256,8 @@ struct RunCommand: AsyncParsableCommand {
                         print("No monitored processes.")
                     } else {
                         for p in procs {
-                            let stateStr: String
-                            switch p.state {
-                            case .launching: stateStr = "launching"
-                            case .ready: stateStr = "ready"
-                            case .failed(let msg): stateStr = "failed: \(msg)"
-                            case .stopped(let code): stateStr = "stopped (exit \(code))"
-                            }
                             let pid = p.pid.map { " [pid \($0)]" } ?? ""
-                            print("  \(p.id.prefix(8)): \(stateStr)\(pid)  \(p.command)")
+                            print("  \(p.id.prefix(8)): \(p.state)\(pid)  \(p.command)")
                         }
                     }
                 } else if trimmed.hasPrefix("/processes stop ") {

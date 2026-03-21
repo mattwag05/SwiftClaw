@@ -41,13 +41,7 @@ public struct StartProcessTool: SwiftClawTool {
             command = try c.decode(String.self, forKey: .command)
             args = try c.decodeIfPresent([String].self, forKey: .args)
             readyMarker = try c.decodeIfPresent(String.self, forKey: .readyMarker)
-            if let i = try? c.decodeIfPresent(Int.self, forKey: .timeout) {
-                timeout = i
-            } else if let s = try? c.decodeIfPresent(String.self, forKey: .timeout) {
-                timeout = Int(s)
-            } else {
-                timeout = nil
-            }
+            timeout = try c.decodeIntOrStringIfPresent(forKey: .timeout)
         }
     }
 
@@ -59,16 +53,7 @@ public struct StartProcessTool: SwiftClawTool {
             readyMarker: args.readyMarker,
             timeout: TimeInterval(args.timeout ?? 30)
         )
-        let procs = await monitor.list()
-        let state = procs.first(where: { $0.id == id })?.state
-        let stateStr: String
-        switch state {
-        case .ready: stateStr = "ready"
-        case .launching: stateStr = "launching"
-        case .failed(let msg): stateStr = "failed: \(msg)"
-        case .stopped(let code): stateStr = "stopped (exit \(code))"
-        case nil: stateStr = "unknown"
-        }
+        let stateStr = await monitor.state(id: id)?.description ?? "unknown"
         return .success("Launched process '\(args.command)' with ID: \(id)\nState: \(stateStr)")
     }
 }

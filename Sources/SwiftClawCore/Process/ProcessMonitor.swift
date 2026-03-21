@@ -25,15 +25,18 @@ public actor ProcessMonitor {
             guard count > 0 else { return [] }
             let take = min(n, count)
             if writeIndex <= capacity {
+                // Buffer not yet full — elements are in insertion order
                 return Array(buffer.suffix(take))
             }
-            // Buffer is full and has wrapped
-            var ordered: [Element] = []
-            ordered.reserveCapacity(count)
-            for i in 0..<count {
-                ordered.append(buffer[(writeIndex + i) % capacity])
+            // Buffer is full and has wrapped.
+            // The `take`-th-newest element lives at startOffset in the circular order.
+            let start = (writeIndex - take) % capacity
+            if start + take <= capacity {
+                return Array(buffer[start..<start + take])
             }
-            return Array(ordered.suffix(take))
+            // Window wraps: [start...] ++ [..<remainder]
+            let firstHalf = Array(buffer[start...])
+            return firstHalf + Array(buffer[..<(take - firstHalf.count)])
         }
     }
 
@@ -297,6 +300,11 @@ public actor ProcessMonitor {
     /// List all monitored processes and their current states.
     public func list() -> [MonitoredProcess] {
         processes.values.map { $0.info }
+    }
+
+    /// Return the current state of a specific process, or nil if not found.
+    public func state(id: String) -> ProcessState? {
+        processes[id]?.info.state
     }
 
     /// Read recent stdout/stderr lines from a process's ring buffer.
