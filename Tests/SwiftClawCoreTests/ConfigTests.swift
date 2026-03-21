@@ -36,4 +36,13 @@ struct ConfigTests {
         let decoded = try JSONDecoder().decode(SwiftClawConfig.self, from: data)
         #expect(decoded.fileSandbox.allowedPaths == ["~", "/tmp"])
     }
+
+    @Test("Decodes old config JSON without cacheMode — defaults to .none")
+    func cacheModeBackwardCompat() throws {
+        let json = Data("""
+        {"fileSandbox":{"allowedPaths":["~"]},"embeddingModelId":"x","embeddingDimensions":768,"retrievalTopK":10,"retrievalThreshold":0.3,"memoryEnabled":false,"consolidationInterval":3}
+        """.utf8)
+        let config = try JSONDecoder().decode(SwiftClawConfig.self, from: json)
+        #expect(config.cacheMode == .none)
+    }
 }

@@ -219,19 +219,20 @@ struct GreetTool: SwiftClawTool {
 swift test
 ```
 
-233 tests across 6 test targets. Core tests use a `MockBackend` — no model download needed.
+249 tests across 6 test targets. Core tests use a `MockBackend` — no model download needed.
 
 ## Roadmap
 
-- **v4.3** (current): Warm russet palette, time-grouped sidebar, live status bar, richer settings
+- **v4.6** (current): Prompt caching (Anthropic + OpenAI), sentinel process monitoring
 
 **Near-term (P0 — Week 1-2):**
-- Prompt caching for HTTP backend (stable system prompt + user-injected skills → 50%+ API cost reduction)
-- Calendar tool exposure in SwiftClawPippin (`CalendarEventsTool`, `CalendarCreateTool`, `CalendarSmartCreateTool`)
-- Sentinel process monitoring (replace `sleep` startup hacks with `__READY__` marker polling)
+- ~~Prompt caching for HTTP backend (stable system prompt + user-injected skills → 50%+ API cost reduction)~~
+- ~~Calendar tool exposure in SwiftClawPippin (`CalendarEventsTool`, `CalendarCreateTool`, `CalendarSmartCreateTool`)~~
+- ~~Sentinel process monitoring (replace `sleep` startup hacks with `__READY__` marker polling)~~
 
 **Short-term (P1 — Month 1):**
-- Two-layer memory: wire `AgentMemory` into the session loop with MEMORY.md consolidation (nanobot/hermes pattern)
+- ~~Two-layer memory: wire `AgentMemory` into the session loop with MEMORY.md consolidation (nanobot/hermes pattern)~~
+- ~~Token counting for HTTP backend (cost visibility and limit warnings)~~
 - Hash-anchored file edits — line-hash tagging makes `write_file`/`edit` stale-safe on large files
 - Lazy skill loading — send skill summaries first; fetch full content on demand
 - Credential proxy — secrets intercepted before tool execution; prevents key leakage into LoRA training data
@@ -245,7 +246,6 @@ swift test
 - JSONL session branching (tree-structured; avoids duplication on forks)
 - Background parallel agent execution
 - Metric-driven LoRA adapter iteration loop (autoresearch-style keep/revert on val_bpb metric)
-- Token counting for HTTP backend (cost visibility and limit warnings)
 
 **Long-term (P3):**
 - iOS support

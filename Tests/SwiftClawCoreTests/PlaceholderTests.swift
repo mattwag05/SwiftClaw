@@ -4,7 +4,7 @@ import Testing
 
 @Test func versionExists() {
     #expect(!SwiftClawVersion.version.isEmpty)
-    #expect(SwiftClawVersion.version == "4.5.0")
+    #expect(SwiftClawVersion.version == "4.6.0")
 }
 
 // MARK: - Message Tests

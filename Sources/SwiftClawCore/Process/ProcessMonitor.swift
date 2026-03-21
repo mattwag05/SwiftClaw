@@ -310,15 +310,17 @@ public actor ProcessMonitor {
     // and readabilityHandler closures. Only Sendable types cross the boundary.
 
     private func updatePid(id: String, pid: Int32) {
-        processes[id]?.info = MonitoredProcess(
+        guard var managed = processes[id] else { return }
+        managed.info = MonitoredProcess(
             id: id,
-            command: processes[id]?.info.command ?? "",
-            args: processes[id]?.info.args ?? [],
-            state: processes[id]?.info.state ?? .launching,
+            command: managed.info.command,
+            args: managed.info.args,
+            state: managed.info.state,
             pid: pid,
-            startTime: processes[id]?.info.startTime ?? Date()
+            startTime: managed.info.startTime
         )
-        processes[id]?.pid = pid
+        managed.pid = pid
+        processes[id] = managed
     }
 
     private func removeProcess(id: String) {

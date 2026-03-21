@@ -1,7 +1,7 @@
 import Foundation
 
 /// State of a process managed by ``ProcessMonitor``.
-public enum ProcessState: Sendable {
+public enum ProcessState: Sendable, Equatable {
     case launching
     case ready
     case failed(String)
