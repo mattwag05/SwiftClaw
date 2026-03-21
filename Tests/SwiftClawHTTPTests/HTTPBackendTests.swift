@@ -92,7 +92,7 @@ struct OpenAIMessageMappingTests {
         let msg = Message(role: .assistant, content: "", toolCalls: [tc])
         let oai = OpenAIMessage(from: msg)
         #expect(oai.role == "assistant")
-        #expect(oai.content == .string(nil))
+        #expect(oai.content == nil)
         #expect(oai.toolCalls?.count == 1)
         #expect(oai.toolCalls?.first?.id == "call_x")
     }

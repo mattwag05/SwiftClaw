@@ -53,6 +53,7 @@ struct RunCommand: AsyncParsableCommand {
     mutating func run() async throws {
         print("SwiftClaw \(SwiftClawVersion.version)")
 
+        let config = (try? SwiftClawConfig.load()) ?? .default
         let resolvedBackend: any ModelBackend
         switch backend {
         case .mlx:
@@ -86,13 +87,11 @@ struct RunCommand: AsyncParsableCommand {
                 throw ValidationError("Invalid API URL: \(apiUrl)")
             }
             let httpModel = model == SwiftClawVersion.defaultModelId ? "qwen2.5:7b" : model
-            let config0 = (try? SwiftClawConfig.load()) ?? .default
-            let cacheMode = cacheModeStr.flatMap(CacheMode.init(rawValue:)) ?? config0.cacheMode
+            let cacheMode = cacheModeStr.flatMap(CacheMode.init(rawValue:)) ?? config.cacheMode
             resolvedBackend = HTTPBackend(baseURL: url, model: httpModel, apiKey: apiKey, cacheMode: cacheMode)
             print("Using HTTP backend: \(apiUrl) (model: \(httpModel))\n")
         }
 
-        let config = (try? SwiftClawConfig.load()) ?? .default
         let agentMemory: (any MemoryProvider)?
         if memory {
             if backend == .mlx {

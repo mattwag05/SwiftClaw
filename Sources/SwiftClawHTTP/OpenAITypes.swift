@@ -49,15 +49,14 @@ struct AnthropicContentBlock: Encodable, Equatable {
 
 /// Flexible message content: either a plain string or an array of Anthropic content blocks.
 enum MessageContent: Encodable, Equatable {
-    case string(String?)
+    case string(String)
     case contentBlocks([AnthropicContentBlock])
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .string(let s):
-            if let s { try container.encode(s) }
-            else { try container.encodeNil() }
+            try container.encode(s)
         case .contentBlocks(let blocks):
             try container.encode(blocks)
         }
@@ -68,7 +67,7 @@ enum MessageContent: Encodable, Equatable {
 
 struct OpenAIMessage: Encodable {
     let role: String
-    let content: MessageContent
+    let content: MessageContent?
     let toolCalls: [OpenAIToolCall]?
     let toolCallId: String?
 
@@ -76,6 +75,14 @@ struct OpenAIMessage: Encodable {
         case role, content
         case toolCalls = "tool_calls"
         case toolCallId = "tool_call_id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(role, forKey: .role)
+        try container.encodeIfPresent(content, forKey: .content)
+        try container.encodeIfPresent(toolCalls, forKey: .toolCalls)
+        try container.encodeIfPresent(toolCallId, forKey: .toolCallId)
     }
 }
 
@@ -202,8 +209,8 @@ extension OpenAIMessage {
                     )
                 }
             }
-            // OpenAI requires content to be omitted (not empty string) when tool_calls present
-            let content: MessageContent = (message.toolCalls?.isEmpty == false) ? .string(nil) : .string(message.content)
+            // OpenAI requires content key to be absent (not null) when tool_calls present
+            let content: MessageContent? = (message.toolCalls?.isEmpty == false) ? nil : .string(message.content)
             self.init(role: "assistant", content: content, toolCalls: calls, toolCallId: nil)
         case .tool:
             self.init(role: "tool", content: .string(message.content), toolCalls: nil, toolCallId: message.toolCallId)
