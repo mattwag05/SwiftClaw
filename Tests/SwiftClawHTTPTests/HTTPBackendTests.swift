@@ -104,6 +104,7 @@ struct OpenAIMessageMappingTests {
             messages: [OpenAIMessage(from: Message(role: .user, content: "Hi"))],
             tools: nil,
             stream: true,
+            streamOptions: StreamOptions(includeUsage: true),
             temperature: 0.7,
             maxTokens: 1024,
             topP: nil
@@ -113,5 +114,17 @@ struct OpenAIMessageMappingTests {
         #expect(json?["model"] as? String == "qwen2.5:7b")
         #expect(json?["stream"] as? Bool == true)
         #expect(json?["max_tokens"] as? Int == 1024)
+        let streamOpts = json?["stream_options"] as? [String: Any]
+        #expect(streamOpts?["include_usage"] as? Bool == true)
+    }
+
+    @Test("Parses usage chunk from SSE stream")
+    func parsesUsageChunk() throws {
+        let parser = SSEParser()
+        let line = #"data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":25,"total_tokens":35}}"#
+        let chunk = try parser.parse(line: line)
+        #expect(chunk?.usage?.promptTokens == 10)
+        #expect(chunk?.usage?.completionTokens == 25)
+        #expect(chunk?.usage?.totalTokens == 35)
     }
 }

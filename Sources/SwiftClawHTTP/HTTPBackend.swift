@@ -68,6 +68,7 @@ public struct HTTPBackend: ModelBackend {
         // Accumulate tool call deltas: index → (id, name, arguments)
         var partials: [Int: (id: String, name: String, arguments: String)] = [:]
         var finishReason: StreamChunk.FinishReason = .stop
+        var tokenUsage: TokenUsage?
 
         for try await line in bytes.lines {
             let chunk: ChatCompletionChunk
@@ -78,6 +79,15 @@ public struct HTTPBackend: ModelBackend {
                 break
             } catch {
                 throw SwiftClawError.sseParsingFailed(error.localizedDescription)
+            }
+
+            // Capture token usage from the final usage-only chunk (choices is empty)
+            if let usage = chunk.usage {
+                tokenUsage = TokenUsage(
+                    promptTokens: usage.promptTokens,
+                    completionTokens: usage.completionTokens,
+                    totalTokens: usage.totalTokens
+                )
             }
 
             guard let choice = chunk.choices.first else { continue }
@@ -116,14 +126,14 @@ public struct HTTPBackend: ModelBackend {
             }
         }
 
-        // Emit collected tool calls on the final chunk
+        // Emit collected tool calls on the final chunk (with token usage if available)
         if !partials.isEmpty {
             let toolCalls = partials.sorted { $0.key < $1.key }.map { _, partial in
                 ToolCallRequest(id: partial.id, name: partial.name, arguments: partial.arguments)
             }
-            continuation.yield(StreamChunk(toolCalls: toolCalls, finishReason: finishReason))
+            continuation.yield(StreamChunk(toolCalls: toolCalls, finishReason: finishReason, tokenUsage: tokenUsage))
         } else {
-            continuation.yield(StreamChunk(finishReason: finishReason))
+            continuation.yield(StreamChunk(finishReason: finishReason, tokenUsage: tokenUsage))
         }
     }
 
@@ -140,6 +150,7 @@ public struct HTTPBackend: ModelBackend {
             messages: openAIMessages,
             tools: openAITools,
             stream: true,
+            streamOptions: StreamOptions(includeUsage: true),
             temperature: config.temperature,
             maxTokens: config.maxTokens,
             topP: config.topP

@@ -3,11 +3,19 @@ import SwiftClawCore
 
 // MARK: - Request
 
+struct StreamOptions: Encodable {
+    let includeUsage: Bool
+    enum CodingKeys: String, CodingKey {
+        case includeUsage = "include_usage"
+    }
+}
+
 struct ChatCompletionRequest: Encodable {
     let model: String
     let messages: [OpenAIMessage]
     let tools: [OpenAIToolDefinition]?
     let stream: Bool
+    let streamOptions: StreamOptions?
     let temperature: Float
     let maxTokens: Int
     let topP: Float?
@@ -15,6 +23,7 @@ struct ChatCompletionRequest: Encodable {
     enum CodingKeys: String, CodingKey {
         case model, messages, tools, stream, temperature, topP = "top_p"
         case maxTokens = "max_tokens"
+        case streamOptions = "stream_options"
     }
 }
 
@@ -61,8 +70,21 @@ struct OpenAIFunctionDefinition: Encodable {
 
 // MARK: - SSE Response
 
+struct UsagePayload: Decodable {
+    let promptTokens: Int
+    let completionTokens: Int
+    let totalTokens: Int
+
+    enum CodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case totalTokens = "total_tokens"
+    }
+}
+
 struct ChatCompletionChunk: Decodable {
     let choices: [ChunkChoice]
+    let usage: UsagePayload?
 }
 
 struct ChunkChoice: Decodable {

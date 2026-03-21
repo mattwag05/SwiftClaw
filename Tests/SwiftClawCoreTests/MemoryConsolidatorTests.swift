@@ -50,7 +50,7 @@ private actor MockMemoryProvider: MemoryProvider {
     #expect(entry?.source == "sess-1")
 }
 
-@Test func consolidatorFallsBackOnInvalidJSON() async throws {
+@Test func consolidatorDropsSilentlyOnInvalidJSON() async throws {
     let mem = MockMemoryProvider()
     let consolidator = MemoryConsolidator()
     let messages = [
@@ -67,9 +67,10 @@ private actor MockMemoryProvider: MemoryProvider {
         sessionId: "sess-2"
     )
 
-    // Fallback: one fact-{timestamp} key
-    #expect(keys.count == 1)
-    #expect(keys[0].hasPrefix("fact-"))
+    // Malformed LLM responses are silently dropped — no garbage facts stored.
+    #expect(keys.isEmpty)
+    let all = await mem.allEntries(layer: nil)
+    #expect(all.isEmpty)
 }
 
 @Test func consolidatorReturnsEmptyForEmptyJSONArray() async throws {

@@ -72,13 +72,9 @@ public struct MemoryConsolidator: Sendable {
                 try await memory.set(entry.key, entry: memEntry, layer: layer)
                 writtenKeys.append(entry.key)
             }
-        } else if !raw.isEmpty {
-            // Fallback: store entire response as a single fact
-            let key = "fact-\(Int(Date().timeIntervalSince1970))"
-            let memEntry = MemoryEntry(key: key, content: raw, source: sessionId)
-            try await memory.set(key, entry: memEntry, layer: layer)
-            writtenKeys.append(key)
         }
+        // Malformed LLM responses (non-JSON, markdown prose, etc.) are silently dropped.
+        // Storing raw model output as a memory fact produces low-quality garbage entries.
 
         return writtenKeys
     }
