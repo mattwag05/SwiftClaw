@@ -39,8 +39,8 @@ public struct StartProcessTool: SwiftClawTool {
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             command = try c.decode(String.self, forKey: .command)
-            args = try? c.decodeIfPresent([String].self, forKey: .args)
-            readyMarker = try? c.decodeIfPresent(String.self, forKey: .readyMarker)
+            args = try c.decodeIfPresent([String].self, forKey: .args)
+            readyMarker = try c.decodeIfPresent(String.self, forKey: .readyMarker)
             if let i = try? c.decodeIfPresent(Int.self, forKey: .timeout) {
                 timeout = i
             } else if let s = try? c.decodeIfPresent(String.self, forKey: .timeout) {
