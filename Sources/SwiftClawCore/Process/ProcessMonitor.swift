@@ -42,7 +42,7 @@ public actor ProcessMonitor {
     private struct ManagedProcess {
         var info: MonitoredProcess
         var outputBuffer: RingBuffer<String>
-        let pid: Int32  // Int32 is Sendable — safe across await and actor boundaries
+        var pid: Int32  // Int32 is Sendable — safe across await and actor boundaries
     }
 
     // MARK: - State
@@ -57,9 +57,16 @@ public actor ProcessMonitor {
 
     /// Launch a process and optionally wait for a ready marker on stdout.
     ///
+    /// The entry is pre-registered with `.launching` state BEFORE the continuation
+    /// is created, so callers can safely call `output(id:)` or `stop(id:)` as soon
+    /// as `launch()` returns without racing against the `register()` Task.
+    ///
     /// All `Process` interaction lives inside a `DispatchQueue.global().async` block
     /// (the ShellTool pattern), so the non-Sendable `Process` object never crosses
     /// an actor isolation boundary or an `await` suspension point.
+    ///
+    /// `FileHandle.readabilityHandler` replaces the polling loop, eliminating the
+    /// TOCTOU double-read of `availableData`.
     ///
     /// - Parameters:
     ///   - command: Executable path or name (resolved via `/usr/bin/env` if not absolute)
@@ -75,6 +82,21 @@ public actor ProcessMonitor {
         timeout: TimeInterval = 30
     ) async throws -> String {
         let id = UUID().uuidString
+
+        // Pre-register with .launching state so callers always find the entry,
+        // even if they query immediately after launch() returns.
+        processes[id] = ManagedProcess(
+            info: MonitoredProcess(
+                id: id,
+                command: command,
+                args: args,
+                state: .launching,
+                pid: nil,
+                startTime: Date()
+            ),
+            outputBuffer: RingBuffer(capacity: 500),
+            pid: 0  // placeholder; updated via updatePid() once process actually starts
+        )
 
         return try await withCheckedThrowingContinuation { continuation in
             // ── All Process interaction is inside this DispatchQueue block ────────────
@@ -100,6 +122,7 @@ public actor ProcessMonitor {
                 do {
                     try process.run()
                 } catch {
+                    Task { await self.removeProcess(id: id) }
                     continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
                         "Failed to launch '\(command)': \(error.localizedDescription)"
                     ))
@@ -107,53 +130,53 @@ public actor ProcessMonitor {
                 }
 
                 let pid = process.processIdentifier  // Int32 — Sendable
+                Task { await self.updatePid(id: id, pid: pid) }
 
-                // Register the process on the actor using only Sendable values.
-                Task {
-                    await self.register(
-                        id: id,
-                        command: command,
-                        args: args,
-                        pid: pid,
-                        hasReadyMarker: readyMarker != nil
-                    )
-                }
+                let stdoutHandle = stdoutPipe.fileHandleForReading
 
-                // ── No ready marker: resume immediately ──────────────────────────────
+                // ── No ready marker: set up readabilityHandler and resume immediately ──
                 guard let marker = readyMarker else {
-                    // Drain stdout and stderr in the background so the ring buffer fills.
-                    DispatchQueue.global().async {
-                        let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                    stdoutHandle.readabilityHandler = { fh in
+                        let data = fh.availableData
+                        if data.isEmpty {
+                            // EOF — process has closed its stdout end
+                            fh.readabilityHandler = nil
+                            return
+                        }
                         if let text = String(data: data, encoding: .utf8) {
                             for line in text.components(separatedBy: "\n") where !line.isEmpty {
                                 Task { await self.appendOutput(id: id, line: line) }
                             }
                         }
                     }
-                    DispatchQueue.global().async {
-                        let data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                        if let text = String(data: data, encoding: .utf8) {
+                    // Drain stderr and reflect final exit code via terminationHandler.
+                    process.terminationHandler = { p in
+                        stdoutHandle.readabilityHandler = nil
+                        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                        if let text = String(data: stderrData, encoding: .utf8) {
                             for line in text.components(separatedBy: "\n") where !line.isEmpty {
                                 Task { await self.appendOutput(id: id, line: "[stderr] \(line)") }
                             }
                         }
-                        process.waitUntilExit()
-                        let exitCode = process.terminationStatus
+                        let exitCode = p.terminationStatus
                         Task { await self.updateState(id: id, state: .stopped(exitCode)) }
                     }
+                    Task { await self.updateState(id: id, state: .ready) }
                     continuation.resume(returning: id)
                     return
                 }
 
-                // ── Ready-marker watch loop ───────────────────────────────────────────
-                // nonisolated(unsafe) boolean flag — only the first event (marker, timeout,
-                // or premature exit) resumes the continuation exactly once.
+                // ── Ready-marker watch ────────────────────────────────────────────────
+                // nonisolated(unsafe) flag — ensures the continuation is resumed exactly once
+                // across the readabilityHandler GCD queue and the timeout DispatchWorkItem.
                 nonisolated(unsafe) var resumed = false
+                nonisolated(unsafe) var lineBuffer = ""
 
                 // Timeout work item — fires if the marker isn't seen in time.
                 let timeoutItem = DispatchWorkItem {
                     guard !resumed else { return }
                     resumed = true
+                    stdoutHandle.readabilityHandler = nil
                     Task { await self.updateState(id: id, state: .failed("Timeout waiting for '\(marker)'")) }
                     continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
                         "Timeout waiting for ready marker '\(marker)' from '\(command)'"
@@ -161,68 +184,61 @@ public actor ProcessMonitor {
                 }
                 DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutItem)
 
-                // Poll stdout line-by-line using availableData.
-                // This keeps Process inside the DispatchQueue block (no async/await).
-                let stdoutHandle = stdoutPipe.fileHandleForReading
-                nonisolated(unsafe) var lineBuffer = ""
-
-                outerLoop: while process.isRunning || stdoutHandle.availableData.count > 0 {
-                    let data = stdoutHandle.availableData
+                // readabilityHandler is called on a private GCD queue each time data
+                // is available. EOF is signaled by an empty Data read.
+                stdoutHandle.readabilityHandler = { fh in
+                    let data = fh.availableData
                     if data.isEmpty {
-                        if !process.isRunning { break }
-                        Thread.sleep(forTimeInterval: 0.05)
-                        continue
+                        // EOF — process exited before the ready marker was seen.
+                        fh.readabilityHandler = nil
+                        guard !resumed else { return }
+                        resumed = true
+                        timeoutItem.cancel()
+                        // terminationStatus is safe to read here: EOF on the pipe
+                        // means the write end is closed, which only happens after exit.
+                        let exitCode = process.terminationStatus
+                        Task { await self.updateState(id: id, state: .stopped(exitCode)) }
+                        continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
+                            "Process '\(command)' exited with code \(exitCode) before ready marker '\(marker)' was seen"
+                        ))
+                        return
                     }
-                    lineBuffer += String(data: data, encoding: .utf8) ?? ""
+
+                    let chunk = String(data: data, encoding: .utf8) ?? ""
+                    lineBuffer += chunk
                     var lines = lineBuffer.components(separatedBy: "\n")
                     lineBuffer = lines.removeLast()  // keep incomplete trailing fragment
 
-                    for line in lines {
+                    for line in lines where !line.isEmpty {
                         Task { await self.appendOutput(id: id, line: line) }
-                        if !resumed && line.contains(marker) {
+                        if !resumed, line.contains(marker) {
                             resumed = true
                             timeoutItem.cancel()
+                            fh.readabilityHandler = nil
                             Task { await self.updateState(id: id, state: .ready) }
                             continuation.resume(returning: id)
+                            // Don't break — remaining lines in this batch still get buffered
+                            // via the appendOutput Tasks that already fired above the marker.
                         }
                     }
+                }
 
-                    if resumed {
-                        // Drain remaining stdout in background so the ring buffer keeps filling.
-                        DispatchQueue.global().async {
-                            let tail = stdoutHandle.readDataToEndOfFile()
-                            if let text = String(data: tail, encoding: .utf8) {
-                                for l in text.components(separatedBy: "\n") where !l.isEmpty {
-                                    Task { await self.appendOutput(id: id, line: l) }
-                                }
+                // terminationHandler: drain stderr and update final state.
+                // If the process exits after the marker was seen, this just records the
+                // exit code. If it exits before (and readabilityHandler fires EOF first),
+                // this is a no-op because the handler already updated state.
+                process.terminationHandler = { p in
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+                        stdoutHandle.readabilityHandler = nil
+                        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                        if let text = String(data: stderrData, encoding: .utf8) {
+                            for line in text.components(separatedBy: "\n") where !line.isEmpty {
+                                Task { await self.appendOutput(id: id, line: "[stderr] \(line)") }
                             }
                         }
-                        break outerLoop
+                        let exitCode = p.terminationStatus
+                        Task { await self.updateState(id: id, state: .stopped(exitCode)) }
                     }
-                }
-
-                // Drain stderr and reflect the final exit code.
-                DispatchQueue.global().async {
-                    let data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                    if let text = String(data: data, encoding: .utf8) {
-                        for line in text.components(separatedBy: "\n") where !line.isEmpty {
-                            Task { await self.appendOutput(id: id, line: "[stderr] \(line)") }
-                        }
-                    }
-                    process.waitUntilExit()
-                    let exitCode = process.terminationStatus
-                    Task { await self.updateState(id: id, state: .stopped(exitCode)) }
-                }
-
-                // Process exited without the ready marker — resume with failure.
-                if !resumed {
-                    timeoutItem.cancel()
-                    resumed = true
-                    let exitCode = process.terminationStatus
-                    Task { await self.updateState(id: id, state: .stopped(exitCode)) }
-                    continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
-                        "Process '\(command)' exited with code \(exitCode) before ready marker '\(marker)' was seen"
-                    ))
                 }
             }
         }
@@ -268,29 +284,23 @@ public actor ProcessMonitor {
     }
 
     // MARK: - Actor-isolated Helpers
-    // These are called via `Task { await self.xxx(...) }` from DispatchQueue blocks.
-    // Only Sendable types (String, Int32, Date, ProcessState) cross the boundary.
+    // These are called via `Task { await self.xxx(...) }` from DispatchQueue blocks
+    // and readabilityHandler closures. Only Sendable types cross the boundary.
 
-    private func register(
-        id: String,
-        command: String,
-        args: [String],
-        pid: Int32,
-        hasReadyMarker: Bool
-    ) {
-        let info = MonitoredProcess(
+    private func updatePid(id: String, pid: Int32) {
+        processes[id]?.info = MonitoredProcess(
             id: id,
-            command: command,
-            args: args,
-            state: hasReadyMarker ? .launching : .ready,
+            command: processes[id]?.info.command ?? "",
+            args: processes[id]?.info.args ?? [],
+            state: processes[id]?.info.state ?? .launching,
             pid: pid,
-            startTime: Date()
+            startTime: processes[id]?.info.startTime ?? Date()
         )
-        processes[id] = ManagedProcess(
-            info: info,
-            outputBuffer: RingBuffer(capacity: 500),
-            pid: pid
-        )
+        processes[id]?.pid = pid
+    }
+
+    private func removeProcess(id: String) {
+        processes.removeValue(forKey: id)
     }
 
     private func appendOutput(id: String, line: String) {
