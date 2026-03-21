@@ -47,7 +47,7 @@ struct RunCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Enable memory consolidation — persist facts across turns.")
     var memory: Bool = false
 
-    @Option(name: .long, help: "Prompt caching mode: none, anthropic, openai (HTTP backend only).")
+    @Option(name: [.customLong("cache-mode")], help: "Prompt caching mode: none, anthropic, openai (HTTP backend only).")
     var cacheModeStr: String?
 
     mutating func run() async throws {

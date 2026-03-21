@@ -29,6 +29,7 @@ final class ChatViewModel {
     var streamingContentVersion: Int = 0
     var backendState: BackendState = .idle
     var errorMessage: String? = nil
+    var lastTokenUsage: TokenUsage? = nil
 
     // MARK: Backend settings — persisted to UserDefaults via didSet
     // @AppStorage is incompatible with @Observable; stored properties with didSet are the correct pattern.
@@ -462,6 +463,7 @@ final class ChatViewModel {
 
                 case let .turn(response):
                     finalizeStreamingBubble(response: response)
+                    if let usage = response.tokenUsage { lastTokenUsage = usage }
                     // Reset streaming state for the next agentic round (tool calls may trigger more)
                     streamingBubbleId = nil
                     currentText = ""
