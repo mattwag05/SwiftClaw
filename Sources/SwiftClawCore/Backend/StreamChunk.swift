@@ -3,11 +3,40 @@ public struct TokenUsage: Sendable, Codable, Equatable {
     public let promptTokens: Int
     public let completionTokens: Int
     public let totalTokens: Int
+    /// Tokens read from the prompt cache (Anthropic cache_control only).
+    public let cacheReadTokens: Int?
+    /// Tokens written to the prompt cache (Anthropic cache_control only).
+    public let cacheCreationTokens: Int?
 
-    public init(promptTokens: Int, completionTokens: Int, totalTokens: Int) {
+    enum CodingKeys: String, CodingKey {
+        case promptTokens
+        case completionTokens
+        case totalTokens
+        case cacheReadTokens
+        case cacheCreationTokens
+    }
+
+    public init(
+        promptTokens: Int,
+        completionTokens: Int,
+        totalTokens: Int,
+        cacheReadTokens: Int? = nil,
+        cacheCreationTokens: Int? = nil
+    ) {
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
         self.totalTokens = totalTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.cacheCreationTokens = cacheCreationTokens
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        promptTokens = try c.decode(Int.self, forKey: .promptTokens)
+        completionTokens = try c.decode(Int.self, forKey: .completionTokens)
+        totalTokens = try c.decode(Int.self, forKey: .totalTokens)
+        cacheReadTokens = try c.decodeIfPresent(Int.self, forKey: .cacheReadTokens)
+        cacheCreationTokens = try c.decodeIfPresent(Int.self, forKey: .cacheCreationTokens)
     }
 }
 
