@@ -2,9 +2,9 @@
 
 All notable changes to SwiftClaw are documented here.
 
-## [4.6] — 2026-03-21
+## [4.6] — 2026-03-22
 
-### Prompt caching + sentinel process monitoring
+### Prompt caching + sentinel process monitoring + edit_file tool + security hardening + quality fixes
 
 **[feature]** `CacheMode.swift`, `HTTPBackend.swift`, `OpenAITypes.swift` — end-to-end Anthropic prompt caching for the HTTP backend. System prompt and tool definitions are marked with `cache_control: {type: "ephemeral"}` when `cacheMode == .anthropic`, reducing API costs 50%+ on cache hits. Stable base prompt and dynamic memory section are split into two content blocks (base cached, memory uncached). Auto-detects Anthropic API from URL. `--cache-mode` CLI flag. OpenAI mode supported as a no-op for explicit configuration.
 
@@ -14,9 +14,19 @@ All notable changes to SwiftClaw are documented here.
 
 **[feature]** `StartProcessTool`, `ProcessOutputTool`, `StopProcessTool`, `ListMonitoredProcessesTool` — four new tools in `SwiftClawTools` for LLM-driven process management. `start_process` and `stop_process` require confirmation. `SwiftClawToolFactory.processTools(monitor:)` factory method. Session wires `ProcessMonitor` lifecycle (auto-shutdown on `endSession()`). REPL `/processes`, `/processes show <id>`, `/processes stop <id>`.
 
-**[test]** 12 new tests covering prompt caching types, token usage backward compat, ProcessMonitor lifecycle, and process tool registration. Total: 249 tests.
+**[feature]** `EditFileTool.swift`, `ToolFactory.swift` — new `edit_file` tool (12th built-in tool). Performs find-and-replace editing on sandboxed files: the agent supplies the exact current text to replace (`old_string`) and the replacement (`new_string`). Edit is rejected if `old_string` is not found (stale edit detection) or appears more than once (ambiguous). Prevents the common failure mode where the agent overwrites wrong content after the file changed since it last read it. Roadmap: hash-anchored edits (oh-my-openagent / P1).
 
-**Summary:** 4 features added, 12 tests added, 249/249 tests passing.
+**[security]** `FileSessionStore.swift` — session ID sanitization now uses a character whitelist (alphanumeric + hyphen, underscore, period) instead of a blocklist. Previously allowed newlines, spaces, shell metacharacters, and other special characters that could cause unexpected filesystem behavior. Three new tests validate: newline injection, space injection, and valid punctuation round-trip.
+
+**[bug]** `MemoryConsolidator.swift` — markdown fence stripping now robustly extracts content between the opening ` ```[language]?\n ` and the last ` \n``` ` marker. The previous `dropLast()` approach would silently fail when the model added text after the closing fence, causing JSON decode to fail and the entire consolidation response to be dropped.
+
+**[quality]** `MemoryStore.swift` — removed dead `removeEmbeddingTask(_:)` method. The self-removal pattern inside `scheduleEmbedding` handles task cleanup directly; this method was never called.
+
+**[quality]** `RunCommand.swift` — replaced silent `try?` for `MemoryStore` initialization with `do-catch` that logs the error to stderr and re-throws. Previously, a failed memory store init silently continued with `agentMemory = nil` — `--memory` appeared to work but was a no-op.
+
+**[test]** 21 new tests total: 12 covering prompt caching types, token usage backward compat, ProcessMonitor lifecycle, and process tool registration; 9 covering EditFileTool (5), FileSessionStore sanitization (3), and ToolFactory count/names (1). Total: 258 tests.
+
+**Summary:** 5 features added, 1 security fix, 1 bug fix, 2 quality improvements, 258/258 tests passing.
 
 ---
 

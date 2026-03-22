@@ -114,4 +114,32 @@ struct FileSessionStoreTests {
             }
         }
     }
+
+    @Test("Invalid session ID with newline injection throws storageError")
+    func invalidSessionIdNewlineThrows() async throws {
+        try await withTempStore { store in
+            await #expect(throws: SwiftClawError.storageError("Invalid session ID")) {
+                try await store.save(sessionId: "test\nevil", messages: [], metadata: makeMetadata())
+            }
+        }
+    }
+
+    @Test("Invalid session ID with space throws storageError")
+    func invalidSessionIdSpaceThrows() async throws {
+        try await withTempStore { store in
+            await #expect(throws: SwiftClawError.storageError("Invalid session ID")) {
+                try await store.save(sessionId: "test session", messages: [], metadata: makeMetadata())
+            }
+        }
+    }
+
+    @Test("Valid session ID with hyphen underscore period saves correctly")
+    func validSessionIdWithPunctuationSaves() async throws {
+        try await withTempStore { store in
+            let id = "my-session_v1.2"
+            try await store.save(sessionId: id, messages: makeMessages(), metadata: makeMetadata())
+            let loaded = try await store.load(sessionId: id)
+            #expect(loaded.messages.count == 3)
+        }
+    }
 }

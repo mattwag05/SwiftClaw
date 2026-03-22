@@ -94,16 +94,21 @@ struct RunCommand: AsyncParsableCommand {
 
         let agentMemory: (any MemoryProvider)?
         if memory {
-            if backend == .mlx {
-                let embeddingEngine = MLXEmbeddingEngine(modelId: config.embeddingModelId) { progress in
-                    let pct = Int(progress * 100)
-                    if pct % 10 == 0 {
-                        fputs("[embedding] download: \(pct)%\n", stderr)
+            do {
+                if backend == .mlx {
+                    let embeddingEngine = MLXEmbeddingEngine(modelId: config.embeddingModelId) { progress in
+                        let pct = Int(progress * 100)
+                        if pct % 10 == 0 {
+                            fputs("[embedding] download: \(pct)%\n", stderr)
+                        }
                     }
+                    agentMemory = try MemoryStore(embeddingEngine: embeddingEngine)
+                } else {
+                    agentMemory = try MemoryStore()
                 }
-                agentMemory = try? MemoryStore(embeddingEngine: embeddingEngine)
-            } else {
-                agentMemory = try? MemoryStore()
+            } catch {
+                fputs("[memory] failed to initialize store: \(error.localizedDescription)\n", stderr)
+                throw error
             }
         } else {
             agentMemory = nil

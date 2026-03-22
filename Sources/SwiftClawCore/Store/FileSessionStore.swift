@@ -23,11 +23,13 @@ public actor FileSessionStore: SessionStore {
     }
 
     private func sanitize(sessionId: String) throws {
+        // Whitelist: only alphanumeric, hyphen, underscore, and period allowed.
+        // This prevents newline injection, null bytes, path separators, and
+        // other special characters that could cause unexpected filesystem behavior.
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
         guard !sessionId.isEmpty,
               sessionId.count <= 100,
-              !sessionId.contains("/"),
-              !sessionId.contains(".."),
-              !sessionId.contains("\0")
+              sessionId.unicodeScalars.allSatisfy({ allowed.contains($0) })
         else {
             throw SwiftClawError.storageError("Invalid session ID")
         }

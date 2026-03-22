@@ -5,10 +5,10 @@ import Testing
 
 @Suite("ToolFactory Tests")
 struct ToolFactoryTests {
-    @Test("allTools returns 11 built-in tools")
+    @Test("allTools returns 12 built-in tools")
     func allToolsCount() {
         let tools = SwiftClawToolFactory.allTools()
-        #expect(tools.count == 11)
+        #expect(tools.count == 12)
     }
 
     @Test("allTools tool names are unique")
@@ -25,7 +25,7 @@ struct ToolFactoryTests {
         let names = Set(tools.map(\.name))
         let expected: Set<String> = [
             "system_info", "disk_space", "process_list", "shell",
-            "read_file", "write_file", "list_directory", "find_files",
+            "read_file", "write_file", "edit_file", "list_directory", "find_files",
             "env_vars", "date_time", "clipboard",
         ]
         #expect(names == expected)
@@ -37,6 +37,6 @@ struct ToolFactoryTests {
             fileSandbox: FileSandboxConfig(allowedPaths: ["/tmp", "~"])
         )
         let tools = SwiftClawToolFactory.allTools(config: config)
-        #expect(tools.count == 11)
+        #expect(tools.count == 12)
     }
 }
