@@ -52,10 +52,21 @@ public struct MemoryConsolidator: Sendable {
 
         var raw = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
         // Strip markdown code fences the model may add despite instructions (e.g. ```json...```)
+        // Find content between opening ```[language]?\n and closing \n``` to handle:
+        // - Extra text after the closing fence
+        // - Fence without a language specifier
         if raw.hasPrefix("```") {
-            let lines = raw.components(separatedBy: "\n")
-            raw = lines.dropFirst().dropLast().joined(separator: "\n")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let openEnd = raw.range(of: "\n"),
+               let closeStart = raw.range(of: "\n```", options: .backwards),
+               openEnd.upperBound <= closeStart.lowerBound {
+                raw = String(raw[openEnd.upperBound..<closeStart.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                // Fence without closing marker — drop just the opening line
+                let lines = raw.components(separatedBy: "\n")
+                raw = lines.dropFirst().joined(separator: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
         }
 
         struct RawEntry: Decodable {

@@ -2,6 +2,26 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [4.6] — 2026-03-22
+
+### edit_file tool + security hardening + quality fixes
+
+**[feature]** `EditFileTool.swift`, `ToolFactory.swift` — new `edit_file` tool (12th built-in tool). Performs find-and-replace editing on sandboxed files: the agent supplies the exact current text to replace (`old_string`) and the replacement (`new_string`). Edit is rejected if `old_string` is not found (stale edit detection) or appears more than once (ambiguous). Prevents the common failure mode where the agent overwrites wrong content after the file changed since it last read it. Roadmap: hash-anchored edits (oh-my-openagent / P1).
+
+**[security]** `FileSessionStore.swift` — session ID sanitization now uses a character whitelist (alphanumeric + hyphen, underscore, period) instead of a blocklist. Previously allowed newlines, spaces, shell metacharacters, and other special characters that could cause unexpected filesystem behavior. Three new tests validate: newline injection, space injection, and valid punctuation round-trip.
+
+**[bug]** `MemoryConsolidator.swift` — markdown fence stripping now robustly extracts content between the opening ` ```[language]?\n ` and the last ` \n``` ` marker. The previous `dropLast()` approach would silently fail when the model added text after the closing fence, causing JSON decode to fail and the entire consolidation response to be dropped.
+
+**[quality]** `MemoryStore.swift` — removed dead `removeEmbeddingTask(_:)` method. The self-removal pattern inside `scheduleEmbedding` handles task cleanup directly; this method was never called.
+
+**[quality]** `RunCommand.swift` — replaced silent `try?` for `MemoryStore` initialization with `do-catch` that logs the error to stderr and re-throws. Previously, a failed memory store init silently continued with `agentMemory = nil` — `--memory` appeared to work but was a no-op.
+
+**[test]** 9 new tests: 5 `EditFileTool` tests (replace, not-found, ambiguous, empty-old-string, sandbox rejection), 3 `FileSessionStore` sanitization tests (newline injection, space injection, valid punctuation), 1 `ToolFactory` count/names update. Total: 246 (was 237).
+
+**Summary:** 1 feature added, 1 security fix, 1 bug fix, 2 quality improvements, 246/246 tests passing.
+
+---
+
 ## [4.5] — 2026-03-21
 
 ### Security hardening + token counting + parallel tools + audit fixes

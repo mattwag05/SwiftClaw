@@ -406,10 +406,6 @@ public actor MemoryStore: MemoryProvider {
         if let t = task { embeddingTasks.insert(t) }
     }
 
-    private func removeEmbeddingTask(_ task: Task<Void, Never>) {
-        embeddingTasks.remove(task)
-    }
-
     // MARK: - Embedding Helpers
 
     private static func decodeEmbedding(_ data: Data) -> [Float]? {

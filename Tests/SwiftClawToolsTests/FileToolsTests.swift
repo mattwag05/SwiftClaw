@@ -158,4 +158,82 @@ struct FileToolsTests {
         #expect(!result.isError)
         #expect(result.content.contains("No files found"))
     }
+
+    // MARK: - EditFileTool
+
+    @Test("edit_file has correct name")
+    func editFileToolName() {
+        let tool = EditFileTool(sandbox: FileSandbox(allowedPaths: ["/tmp"]))
+        #expect(tool.name == "edit_file")
+    }
+
+    @Test("edit_file replaces unique string")
+    func editFileToolReplacesString() async throws {
+        let path = "\(tmpDir)/swiftclaw-edit-\(UUID().uuidString).txt"
+        let original = "line one\nline two\nline three"
+        try original.write(toFile: path, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let tool = EditFileTool(sandbox: FileSandbox(allowedPaths: [tmpDir]))
+        let args = """
+            {"path":"\(path)","old_string":"line two","new_string":"REPLACED"}
+            """
+        let result = try await tool.execute(arguments: args)
+        #expect(!result.isError)
+
+        let updated = try String(contentsOfFile: path, encoding: .utf8)
+        #expect(updated == "line one\nREPLACED\nline three")
+    }
+
+    @Test("edit_file fails when old_string not found")
+    func editFileToolNotFound() async throws {
+        let path = "\(tmpDir)/swiftclaw-edit-nf-\(UUID().uuidString).txt"
+        try "hello world".write(toFile: path, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let tool = EditFileTool(sandbox: FileSandbox(allowedPaths: [tmpDir]))
+        let args = """
+            {"path":"\(path)","old_string":"nonexistent","new_string":"x"}
+            """
+        let result = try await tool.execute(arguments: args)
+        #expect(result.isError)
+        #expect(result.content.contains("not found"))
+    }
+
+    @Test("edit_file fails when old_string is ambiguous")
+    func editFileToolAmbiguous() async throws {
+        let path = "\(tmpDir)/swiftclaw-edit-amb-\(UUID().uuidString).txt"
+        try "foo\nfoo\nbar".write(toFile: path, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let tool = EditFileTool(sandbox: FileSandbox(allowedPaths: [tmpDir]))
+        let args = """
+            {"path":"\(path)","old_string":"foo","new_string":"baz"}
+            """
+        let result = try await tool.execute(arguments: args)
+        #expect(result.isError)
+        #expect(result.content.contains("more than once"))
+    }
+
+    @Test("edit_file rejects empty old_string")
+    func editFileToolRejectsEmptyOldString() async throws {
+        let path = "\(tmpDir)/swiftclaw-edit-empty-\(UUID().uuidString).txt"
+        try "hello".write(toFile: path, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let tool = EditFileTool(sandbox: FileSandbox(allowedPaths: [tmpDir]))
+        let args = """
+            {"path":"\(path)","old_string":"","new_string":"x"}
+            """
+        let result = try await tool.execute(arguments: args)
+        #expect(result.isError)
+    }
+
+    @Test("edit_file rejects path outside sandbox")
+    func editFileToolRejectsSandbox() async throws {
+        let tool = EditFileTool(sandbox: FileSandbox(allowedPaths: ["/tmp"]))
+        let result = try await tool.execute(
+            arguments: "{\"path\":\"/etc/passwd\",\"old_string\":\"root\",\"new_string\":\"x\"}")
+        #expect(result.isError)
+    }
 }
