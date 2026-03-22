@@ -29,13 +29,7 @@ public struct ShellTool: SwiftClawTool {
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             command = try c.decode(String.self, forKey: .command)
-            if let i = try? c.decodeIfPresent(Int.self, forKey: .timeout) {
-                timeout = i
-            } else if let s = try? c.decodeIfPresent(String.self, forKey: .timeout) {
-                timeout = Int(s)
-            } else {
-                timeout = nil
-            }
+            timeout = try c.decodeIntOrStringIfPresent(forKey: .timeout)
         }
 
         enum CodingKeys: String, CodingKey { case command, timeout }

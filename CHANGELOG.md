@@ -2,6 +2,24 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [4.6] — 2026-03-21
+
+### Prompt caching + sentinel process monitoring
+
+**[feature]** `CacheMode.swift`, `HTTPBackend.swift`, `OpenAITypes.swift` — end-to-end Anthropic prompt caching for the HTTP backend. System prompt and tool definitions are marked with `cache_control: {type: "ephemeral"}` when `cacheMode == .anthropic`, reducing API costs 50%+ on cache hits. Stable base prompt and dynamic memory section are split into two content blocks (base cached, memory uncached). Auto-detects Anthropic API from URL. `--cache-mode` CLI flag. OpenAI mode supported as a no-op for explicit configuration.
+
+**[feature]** `TokenUsage` now carries `cacheReadTokens: Int?` and `cacheCreationTokens: Int?`. HTTP backend parses Anthropic's `cache_read_input_tokens` / `cache_creation_input_tokens` from SSE usage chunks. Cache stats displayed in REPL when non-nil. `SwiftClawConfig` gains `cacheMode: CacheMode` (default `.none`), backward-compatible.
+
+**[feature]** `ProcessMonitor.swift`, `ProcessState.swift` — new actor in `SwiftClawCore` for launching and monitoring long-running child processes. Sentinel `__READY__` marker detection on stdout (configurable marker + timeout). Ring buffer (100 lines) per process. SIGTERM → 2s → SIGKILL stop sequence. `shutdown()` for session cleanup. All `Process` interaction isolated to `DispatchQueue.global().async` for Swift 6 concurrency safety.
+
+**[feature]** `StartProcessTool`, `ProcessOutputTool`, `StopProcessTool`, `ListMonitoredProcessesTool` — four new tools in `SwiftClawTools` for LLM-driven process management. `start_process` and `stop_process` require confirmation. `SwiftClawToolFactory.processTools(monitor:)` factory method. Session wires `ProcessMonitor` lifecycle (auto-shutdown on `endSession()`). REPL `/processes`, `/processes show <id>`, `/processes stop <id>`.
+
+**[test]** 12 new tests covering prompt caching types, token usage backward compat, ProcessMonitor lifecycle, and process tool registration. Total: 249 tests.
+
+**Summary:** 4 features added, 12 tests added, 249/249 tests passing.
+
+---
+
 ## [4.5] — 2026-03-21
 
 ### Security hardening + token counting + parallel tools + audit fixes

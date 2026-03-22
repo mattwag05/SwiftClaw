@@ -18,6 +18,7 @@ public enum SwiftClawError: LocalizedError, Equatable {
     case embeddingModelNotFound(String)
     case embeddingFailed(String)
     case memoryDatabaseError(String)
+    case processMonitoringFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -55,6 +56,8 @@ public enum SwiftClawError: LocalizedError, Equatable {
             "Embedding failed: \(detail)"
         case let .memoryDatabaseError(detail):
             "Memory database error: \(detail)"
+        case let .processMonitoringFailed(msg):
+            "Process monitoring failed: \(msg)"
         }
     }
 }

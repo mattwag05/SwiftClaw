@@ -29,6 +29,7 @@ final class ChatViewModel {
     var streamingContentVersion: Int = 0
     var backendState: BackendState = .idle
     var errorMessage: String? = nil
+    var lastTokenUsage: TokenUsage? = nil
 
     // MARK: Backend settings — persisted to UserDefaults via didSet
     // @AppStorage is incompatible with @Observable; stored properties with didSet are the correct pattern.
@@ -136,10 +137,12 @@ final class ChatViewModel {
                     return
                 }
                 let httpModel = modelId == "mlx-community/Qwen3.5-9B-MLX-4bit" ? "qwen2.5:7b" : modelId
+                let config = (try? SwiftClawConfig.load()) ?? .default
                 backend = HTTPBackend(
                     baseURL: url,
                     model: httpModel,
-                    apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey
+                    apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey,
+                    cacheMode: config.cacheMode
                 )
                 backendState = .ready
             }
@@ -460,6 +463,7 @@ final class ChatViewModel {
 
                 case let .turn(response):
                     finalizeStreamingBubble(response: response)
+                    if let usage = response.tokenUsage { lastTokenUsage = usage }
                     // Reset streaming state for the next agentic round (tool calls may trigger more)
                     streamingBubbleId = nil
                     currentText = ""

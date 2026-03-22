@@ -10,6 +10,7 @@ public struct SwiftClawConfig: Sendable, Codable {
     public var memoryEnabled: Bool
     public var consolidationInterval: Int
     public var compressionTokenThreshold: Int?
+    public var cacheMode: CacheMode
 
     public static let `default` = SwiftClawConfig(
         fileSandbox: .default,
@@ -19,7 +20,8 @@ public struct SwiftClawConfig: Sendable, Codable {
         retrievalThreshold: 0.3,
         memoryEnabled: false,
         consolidationInterval: 3,
-        compressionTokenThreshold: nil
+        compressionTokenThreshold: nil,
+        cacheMode: .none
     )
 
     public init(
@@ -30,7 +32,8 @@ public struct SwiftClawConfig: Sendable, Codable {
         retrievalThreshold: Float = 0.3,
         memoryEnabled: Bool = false,
         consolidationInterval: Int = 3,
-        compressionTokenThreshold: Int? = nil
+        compressionTokenThreshold: Int? = nil,
+        cacheMode: CacheMode = .none
     ) {
         self.fileSandbox = fileSandbox
         self.embeddingModelId = embeddingModelId
@@ -40,6 +43,7 @@ public struct SwiftClawConfig: Sendable, Codable {
         self.memoryEnabled = memoryEnabled
         self.consolidationInterval = consolidationInterval
         self.compressionTokenThreshold = compressionTokenThreshold
+        self.cacheMode = cacheMode
     }
 
     // Custom Codable init for backward compatibility — old JSON without new fields decodes cleanly.
@@ -52,6 +56,7 @@ public struct SwiftClawConfig: Sendable, Codable {
         case memoryEnabled
         case consolidationInterval
         case compressionTokenThreshold
+        case cacheMode
     }
 
     public init(from decoder: Decoder) throws {
@@ -64,6 +69,7 @@ public struct SwiftClawConfig: Sendable, Codable {
         memoryEnabled = try c.decodeIfPresent(Bool.self, forKey: .memoryEnabled) ?? false
         consolidationInterval = try c.decodeIfPresent(Int.self, forKey: .consolidationInterval) ?? 3
         compressionTokenThreshold = try c.decodeIfPresent(Int.self, forKey: .compressionTokenThreshold)
+        cacheMode = try c.decodeIfPresent(CacheMode.self, forKey: .cacheMode) ?? .none
     }
 
     /// Loads config from ~/.swiftclaw/config.json. Returns `.default` if the file doesn't exist.

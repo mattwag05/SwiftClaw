@@ -65,7 +65,7 @@ struct OpenAIMessageMappingTests {
         let msg = Message(role: .system, content: "You are helpful.")
         let oai = OpenAIMessage(from: msg)
         #expect(oai.role == "system")
-        #expect(oai.content == "You are helpful.")
+        #expect(oai.content == .string("You are helpful."))
         #expect(oai.toolCalls == nil)
     }
 
@@ -74,7 +74,7 @@ struct OpenAIMessageMappingTests {
         let msg = Message(role: .user, content: "Hello")
         let oai = OpenAIMessage(from: msg)
         #expect(oai.role == "user")
-        #expect(oai.content == "Hello")
+        #expect(oai.content == .string("Hello"))
     }
 
     @Test("Maps tool result message")
@@ -82,7 +82,7 @@ struct OpenAIMessageMappingTests {
         let msg = Message(role: .tool, content: "result", toolCallId: "call_123")
         let oai = OpenAIMessage(from: msg)
         #expect(oai.role == "tool")
-        #expect(oai.content == "result")
+        #expect(oai.content == .string("result"))
         #expect(oai.toolCallId == "call_123")
     }
 

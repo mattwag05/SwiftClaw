@@ -47,9 +47,13 @@ struct RunCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Enable memory consolidation — persist facts across turns.")
     var memory: Bool = false
 
+    @Option(name: [.customLong("cache-mode")], help: "Prompt caching mode: none, anthropic, openai (HTTP backend only).")
+    var cacheModeStr: String?
+
     mutating func run() async throws {
         print("SwiftClaw \(SwiftClawVersion.version)")
 
+        let config = (try? SwiftClawConfig.load()) ?? .default
         let resolvedBackend: any ModelBackend
         switch backend {
         case .mlx:
@@ -83,11 +87,11 @@ struct RunCommand: AsyncParsableCommand {
                 throw ValidationError("Invalid API URL: \(apiUrl)")
             }
             let httpModel = model == SwiftClawVersion.defaultModelId ? "qwen2.5:7b" : model
-            resolvedBackend = HTTPBackend(baseURL: url, model: httpModel, apiKey: apiKey)
+            let cacheMode = cacheModeStr.flatMap(CacheMode.init(rawValue:)) ?? config.cacheMode
+            resolvedBackend = HTTPBackend(baseURL: url, model: httpModel, apiKey: apiKey, cacheMode: cacheMode)
             print("Using HTTP backend: \(apiUrl) (model: \(httpModel))\n")
         }
 
-        let config = (try? SwiftClawConfig.load()) ?? .default
         let agentMemory: (any MemoryProvider)?
         if memory {
             if backend == .mlx {
@@ -104,8 +108,11 @@ struct RunCommand: AsyncParsableCommand {
         } else {
             agentMemory = nil
         }
+        let processMonitor = ProcessMonitor()
         var tools: [any SwiftClawTool] =
-            SwiftClawToolFactory.allTools(config: config) + PippinToolFactory.allTools()
+            SwiftClawToolFactory.allTools(config: config)
+            + PippinToolFactory.allTools()
+            + SwiftClawToolFactory.processTools(monitor: processMonitor)
         if let memStore = agentMemory {
             tools += MemoryToolFactory.allTools(store: memStore)
         }
@@ -149,7 +156,8 @@ struct RunCommand: AsyncParsableCommand {
                     config: sessionConfig,
                     sessionId: sessionId,
                     restoredMessages: restored.messages,
-                    memory: agentMemory
+                    memory: agentMemory,
+                    processMonitor: processMonitor
                 )
                 let count = restored.messages.filter { $0.role == .user }.count
                 print("Resumed session '\(sessionId)' (\(count) prior turns).\n")
@@ -159,7 +167,8 @@ struct RunCommand: AsyncParsableCommand {
                     backend: resolvedBackend,
                     config: sessionConfig,
                     sessionId: sessionId,
-                    memory: agentMemory
+                    memory: agentMemory,
+                    processMonitor: processMonitor
                 )
                 print("Started new session '\(sessionId)'.\n")
             }
@@ -169,7 +178,8 @@ struct RunCommand: AsyncParsableCommand {
                 agent: agent,
                 backend: resolvedBackend,
                 config: sessionConfig,
-                memory: agentMemory
+                memory: agentMemory,
+                processMonitor: processMonitor
             )
         }
 
@@ -196,7 +206,7 @@ struct RunCommand: AsyncParsableCommand {
             }
             if trimmed == "/help" {
                 let memCmd = memory ? "  /memory  " : ""
-                print("Commands: /help  /tools\(memCmd)  /quit  /exit")
+                print("Commands: /help  /tools\(memCmd)  /processes  /quit  /exit")
                 continue
             }
             if trimmed == "/memory" || trimmed.hasPrefix("/memory ") {
@@ -236,6 +246,37 @@ struct RunCommand: AsyncParsableCommand {
                             print("- \(entry.key): \(entry.content)")
                         }
                     }
+                }
+                continue
+            }
+            if trimmed == "/processes" || trimmed.hasPrefix("/processes ") {
+                if trimmed == "/processes" {
+                    let procs = await processMonitor.list()
+                    if procs.isEmpty {
+                        print("No monitored processes.")
+                    } else {
+                        for p in procs {
+                            let pid = p.pid.map { " [pid \($0)]" } ?? ""
+                            print("  \(p.id.prefix(8)): \(p.state)\(pid)  \(p.command)")
+                        }
+                    }
+                } else if trimmed.hasPrefix("/processes stop ") {
+                    let id = String(trimmed.dropFirst("/processes stop ".count)).trimmingCharacters(in: .whitespaces)
+                    do {
+                        try await processMonitor.stop(id: id)
+                        print("Process stopped.")
+                    } catch {
+                        print("Error: \(error.localizedDescription)")
+                    }
+                } else if trimmed.hasPrefix("/processes show ") {
+                    let id = String(trimmed.dropFirst("/processes show ".count)).trimmingCharacters(in: .whitespaces)
+                    if let lines = await processMonitor.output(id: id) {
+                        print(lines.joined(separator: "\n"))
+                    } else {
+                        print("Process not found: \(id)")
+                    }
+                } else {
+                    print("Unknown /processes subcommand. Usage: /processes  /processes stop <id>  /processes show <id>")
                 }
                 continue
             }
@@ -287,6 +328,11 @@ struct RunCommand: AsyncParsableCommand {
                             print(response.content)
                         } else if response.toolCalls.isEmpty {
                             fputs("\u{001B}[2m[empty response]\u{001B}[0m\n", stderr)
+                        }
+                        if let usage = response.tokenUsage, usage.cacheReadTokens != nil || usage.cacheCreationTokens != nil {
+                            let read = usage.cacheReadTokens ?? 0
+                            let creation = usage.cacheCreationTokens ?? 0
+                            fputs("\u{001B}[2m[cache: \(read) read, \(creation) created]\u{001B}[0m\n", stderr)
                         }
                     case .done:
                         print()

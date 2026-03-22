@@ -9,15 +9,25 @@ public struct HTTPBackend: ModelBackend {
     private let endpoint: URL
     private let model: String
     private let apiKey: String?
+    /// The resolved cache mode after auto-detection and endpoint validation.
+    /// `.anthropic` is downgraded to `.none` when the endpoint is not `anthropic.com`,
+    /// preventing Anthropic-specific content blocks from being sent to Ollama or other servers.
+    private let effectiveCacheMode: CacheMode
 
     /// - Parameters:
     ///   - baseURL: Base URL of the API, e.g. `http://localhost:11434/v1`
     ///   - model: Model identifier sent in the request body
     ///   - apiKey: Optional Bearer token (not required for Ollama)
-    public init(baseURL: URL, model: String, apiKey: String? = nil) {
+    ///   - cacheMode: Prompt caching mode. Defaults to `.none`. Auto-detects `.anthropic` when `baseURL` contains `anthropic.com`.
+    public init(baseURL: URL, model: String, apiKey: String? = nil, cacheMode: CacheMode = .none) {
         self.endpoint = baseURL.appendingPathComponent("chat/completions")
         self.model = model
         self.apiKey = apiKey
+        let isAnthropic = baseURL.absoluteString.contains("anthropic.com")
+        // Auto-detect: use .anthropic when URL matches and no explicit mode was set.
+        let resolved: CacheMode = (cacheMode == .none && isAnthropic) ? .anthropic : cacheMode
+        // Downgrade: explicit .anthropic on a non-Anthropic endpoint would send incompatible headers.
+        self.effectiveCacheMode = (resolved == .anthropic && !isAnthropic) ? .none : resolved
     }
 
     public func generate(
@@ -86,7 +96,9 @@ public struct HTTPBackend: ModelBackend {
                 tokenUsage = TokenUsage(
                     promptTokens: usage.promptTokens,
                     completionTokens: usage.completionTokens,
-                    totalTokens: usage.totalTokens
+                    totalTokens: usage.totalTokens,
+                    cacheReadTokens: usage.cacheReadInputTokens,
+                    cacheCreationTokens: usage.cacheCreationInputTokens
                 )
             }
 
@@ -142,8 +154,49 @@ public struct HTTPBackend: ModelBackend {
         tools: [ToolDefinition],
         config: GenerationConfig
     ) throws -> URLRequest {
-        let openAIMessages = messages.map { OpenAIMessage(from: $0) }
-        let openAITools = tools.isEmpty ? nil : tools.map { OpenAIToolDefinition(from: $0) }
+        let openAIMessages: [OpenAIMessage]
+        var openAITools = tools.isEmpty ? nil : tools.map { OpenAIToolDefinition(from: $0) }
+
+        if effectiveCacheMode == .anthropic {
+            // Build messages with Anthropic content blocks for system message
+            openAIMessages = messages.enumerated().map { _, message in
+                if message.role == .system {
+                    let content = message.content ?? ""
+                    // Split at the memory section marker
+                    let memoryMarker = "\n\n## Relevant Memories"
+                    let blocks: [AnthropicContentBlock]
+                    if let markerRange = content.range(of: memoryMarker) {
+                        let baseText = String(content[content.startIndex..<markerRange.lowerBound])
+                        let memoryText = String(content[markerRange.lowerBound...])
+                        blocks = [
+                            AnthropicContentBlock(type: "text", text: baseText, cacheControl: .ephemeral),
+                            AnthropicContentBlock(type: "text", text: memoryText, cacheControl: nil)
+                        ]
+                    } else {
+                        blocks = [
+                            AnthropicContentBlock(type: "text", text: content, cacheControl: .ephemeral)
+                        ]
+                    }
+                    return OpenAIMessage(role: "system", content: .contentBlocks(blocks), toolCalls: nil, toolCallId: nil)
+                } else {
+                    return OpenAIMessage(from: message)
+                }
+            }
+
+            // Mark the last tool definition with cache_control: ephemeral
+            if var tools = openAITools, !tools.isEmpty {
+                let lastIdx = tools.index(before: tools.endIndex)
+                let last = tools[lastIdx]
+                tools[lastIdx] = OpenAIToolDefinition(
+                    type: last.type,
+                    function: last.function,
+                    cacheControl: .ephemeral
+                )
+                openAITools = tools
+            }
+        } else {
+            openAIMessages = messages.map { OpenAIMessage(from: $0) }
+        }
 
         let body = ChatCompletionRequest(
             model: model,
@@ -161,6 +214,9 @@ public struct HTTPBackend: ModelBackend {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let key = apiKey {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+        if effectiveCacheMode == .anthropic {
+            request.setValue("prompt-caching-2024-07-31", forHTTPHeaderField: "anthropic-beta")
         }
         request.httpBody = try JSONEncoder().encode(body)
         return request
