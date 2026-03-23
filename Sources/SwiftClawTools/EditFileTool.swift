@@ -62,7 +62,7 @@ public struct EditFileTool: SwiftClawTool {
             return .failure("Could not read file: \(error.localizedDescription)")
         }
 
-        var foundRange: Range<String.Index>? = nil
+        var foundRange: Range<String.Index>?
         var searchStart = current.startIndex
         while let range = current.range(of: args.old_string, range: searchStart..<current.endIndex) {
             if foundRange != nil {
