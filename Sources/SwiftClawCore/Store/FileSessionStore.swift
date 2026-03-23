@@ -22,14 +22,16 @@ public actor FileSessionStore: SessionStore {
         try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
     }
 
+    // Whitelist: only alphanumeric, hyphen, underscore, and period allowed.
+    // This prevents newline injection, null bytes, path separators, and
+    // other special characters that could cause unexpected filesystem behavior.
+    private static let allowedSessionIdChars = CharacterSet.alphanumerics
+        .union(CharacterSet(charactersIn: "-_."))
+
     private func sanitize(sessionId: String) throws {
-        // Whitelist: only alphanumeric, hyphen, underscore, and period allowed.
-        // This prevents newline injection, null bytes, path separators, and
-        // other special characters that could cause unexpected filesystem behavior.
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
         guard !sessionId.isEmpty,
               sessionId.count <= 100,
-              sessionId.unicodeScalars.allSatisfy({ allowed.contains($0) })
+              sessionId.unicodeScalars.allSatisfy({ Self.allowedSessionIdChars.contains($0) })
         else {
             throw SwiftClawError.storageError("Invalid session ID")
         }
