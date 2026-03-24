@@ -54,7 +54,7 @@ public struct WriteFileTool: SwiftClawTool {
             // Existing file: atomic replace via temp file
             let tempURL = dir.appendingPathComponent(".\(url.lastPathComponent).swiftclaw-tmp")
             do {
-                try data.write(to: tempURL, options: .atomic)
+                try data.write(to: tempURL)
                 _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
             } catch {
                 try? FileManager.default.removeItem(at: tempURL)
