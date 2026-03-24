@@ -62,31 +62,27 @@ public struct EditFileTool: SwiftClawTool {
             return .failure("Could not read file: \(error.localizedDescription)")
         }
 
-        // Count occurrences — must be exactly one for the edit to proceed
-        var occurrences = 0
+        var foundRange: Range<String.Index>?
         var searchStart = current.startIndex
         while let range = current.range(of: args.old_string, range: searchStart..<current.endIndex) {
-            occurrences += 1
-            if occurrences > 1 { break }
+            if foundRange != nil {
+                return .failure(
+                    "old_string appears more than once in \(resolved) — edit is ambiguous. " +
+                    "Use a longer, unique old_string that includes surrounding context."
+                )
+            }
+            foundRange = range
             searchStart = range.upperBound
         }
 
-        switch occurrences {
-        case 0:
+        guard let matchRange = foundRange else {
             return .failure(
                 "old_string not found in \(resolved). " +
                 "Re-read the file with read_file to confirm the exact current content."
             )
-        case 1:
-            break
-        default:
-            return .failure(
-                "old_string appears more than once in \(resolved) — edit is ambiguous. " +
-                "Use a longer, unique old_string that includes surrounding context."
-            )
         }
 
-        let updated = current.replacingOccurrences(of: args.old_string, with: args.new_string)
+        let updated = current.replacingCharacters(in: matchRange, with: args.new_string)
 
         guard let data = updated.data(using: .utf8) else {
             return .failure("Updated content could not be encoded as UTF-8")
@@ -95,7 +91,7 @@ public struct EditFileTool: SwiftClawTool {
         let dir = url.deletingLastPathComponent()
         let tempURL = dir.appendingPathComponent(".\(url.lastPathComponent).swiftclaw-tmp")
         do {
-            try data.write(to: tempURL, options: .atomic)
+            try data.write(to: tempURL)
             _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
         } catch {
             try? FileManager.default.removeItem(at: tempURL)

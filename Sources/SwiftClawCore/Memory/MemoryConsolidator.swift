@@ -61,10 +61,9 @@ public struct MemoryConsolidator: Sendable {
                openEnd.upperBound <= closeStart.lowerBound {
                 raw = String(raw[openEnd.upperBound..<closeStart.lowerBound])
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-            } else {
+            } else if let newlineIdx = raw.firstIndex(of: "\n") {
                 // Fence without closing marker — drop just the opening line
-                let lines = raw.components(separatedBy: "\n")
-                raw = lines.dropFirst().joined(separator: "\n")
+                raw = String(raw[raw.index(after: newlineIdx)...])
                     .trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }

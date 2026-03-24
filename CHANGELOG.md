@@ -2,6 +2,20 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [4.7] — 2026-03-23
+
+### Quality follow-up: EditFileTool precision, CharacterSet static allocation, MemoryConsolidator efficiency
+
+**[quality]** `EditFileTool.swift` — replaced `replacingOccurrences(of:with:)` with `replacingCharacters(in:matchRange,with:)`. The previous form re-scanned the string for the pattern after uniqueness was already verified; the new form replaces exactly the found range, which is both more precise and avoids a redundant O(n) scan. Also removed `.atomic` from the temp-file write (as documented in CLAUDE.md: `.atomic` internally creates its own temp file, so pairing it with `replaceItemAt` performed two rename syscalls). Cleaned up occurrence-detection control flow from switch-on-count to early-return on second occurrence.
+
+**[quality]** `FileSessionStore.swift` — hoisted `allowedSessionIdChars: CharacterSet` to a static property. Previously the `CharacterSet` was allocated on every `sanitize(sessionId:)` call; a static let is created once at class load time, saving an allocation on every session access.
+
+**[quality]** `MemoryConsolidator.swift` — fence stripping for the no-closing-marker case now uses `firstIndex(of:"\n")` with `String(raw[raw.index(after:newlineIdx)...])` instead of `components(separatedBy:"\n").dropFirst().joined(separator:"\n")`. The previous form allocated an `[Substring]` array and did a join; the new form slices directly, O(n) with no allocations.
+
+**Summary:** 3 quality improvements, 0 tests changed, 271/271 tests passing.
+
+---
+
 ## [4.6] — 2026-03-22
 
 ### Prompt caching + sentinel process monitoring + edit_file tool + security hardening + quality fixes
