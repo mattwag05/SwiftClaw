@@ -4,10 +4,11 @@ import SwiftUI
 struct ChatDetailView: View {
     @Environment(ChatViewModel.self) private var viewModel
     @State private var isNearBottom = true
+    @State private var scrollProxy: ScrollViewProxy?
 
     var body: some View {
         @Bindable var vm = viewModel
-        ZStack {
+        ZStack(alignment: .bottomTrailing) {
             // Dark dotted background
             DottedBackground()
                 .ignoresSafeArea()
@@ -74,6 +75,7 @@ struct ChatDetailView: View {
                             proxy.scrollTo("bottom", anchor: .bottom)
                         }
                     }
+                    .onAppear { scrollProxy = proxy }
                 }
 
                 Divider()
@@ -102,7 +104,21 @@ struct ChatDetailView: View {
                     Task { await viewModel.loadBackend() }
                 }
             }
+
+            // Scroll-to-bottom pill — surfaces when the user scrolls up >100pt.
+            if !isNearBottom, !viewModel.messages.isEmpty {
+                SCButton(icon: "arrow.down", size: .small) {
+                    withAnimation {
+                        scrollProxy?.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+                .help("Scroll to latest")
+                .padding(.trailing, 32)
+                .padding(.bottom, 88)
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
         }
+        .animation(.easeInOut(duration: 0.15), value: isNearBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .toolbar {
             ToolbarItem(placement: .secondaryAction) {

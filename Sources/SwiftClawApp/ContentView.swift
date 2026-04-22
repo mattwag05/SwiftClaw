@@ -1,9 +1,11 @@
+import AppKit
 import SwiftClawCore
 import SwiftClawUI
 import SwiftUI
 
 struct ContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(CommandRegistry.self) private var commandRegistry
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
@@ -62,6 +64,19 @@ struct ContentView: View {
             Button("OK") { viewModel.errorMessage = nil }
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .sheet(isPresented: Binding(
+            get: { commandRegistry.isPresented },
+            set: { commandRegistry.isPresented = $0 }
+        )) {
+            CommandPaletteView(
+                onOpenSettings: {
+                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+                },
+                onToggleSidebar: {
+                    columnVisibility = columnVisibility == .all ? .doubleColumn : .all
+                }
+            )
         }
     }
 
