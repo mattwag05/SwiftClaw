@@ -22,7 +22,11 @@ public struct AssistantMessageView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .topTrailing) {
                     if isHovered {
-                        SCButton(icon: copied ? "checkmark" : "doc.on.doc", size: .small) {
+                        SCButton(
+                            icon: copied ? "checkmark" : "doc.on.doc",
+                            label: copied ? "Copied" : "Copy message",
+                            size: .small
+                        ) {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(text, forType: .string)
                             copied = true
@@ -31,7 +35,6 @@ public struct AssistantMessageView: View {
                                 copied = false
                             }
                         }
-                        .help(copied ? "Copied" : "Copy message")
                         .transition(.opacity)
                     }
                 }

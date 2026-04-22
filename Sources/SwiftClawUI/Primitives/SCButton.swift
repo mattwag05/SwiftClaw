@@ -49,6 +49,7 @@ public struct SCButton: View {
     private let variant: Variant
     private let size: Size
     private let action: () -> Void
+    private let accessibilityLabelOverride: String?
 
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovered = false
@@ -57,20 +58,48 @@ public struct SCButton: View {
         _ title: String = "",
         variant: Variant = .primary,
         size: Size = .medium,
+        accessibilityLabel: String? = nil,
         action: @escaping () -> Void
     ) {
+        // Icon-only buttons fall back to reading the raw SF Symbol name in
+        // VoiceOver without a label, so require a non-empty accessibilityLabel
+        // at call site — guards callers that reach `.icon` directly, not just
+        // the `init(icon:label:size:action:)` overload.
+        if case .icon = variant {
+            let trimmed = accessibilityLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            precondition(
+                !trimmed.isEmpty,
+                "SCButton icon-only buttons require a non-empty accessibilityLabel. Use init(icon:label:size:action:) or provide accessibilityLabel when variant is .icon."
+            )
+        }
         self.title = title
         self.variant = variant
         self.size = size
         self.action = action
+        accessibilityLabelOverride = accessibilityLabel
     }
 
-    public init(icon systemName: String, size: Size = .medium, action: @escaping () -> Void) {
-        self.init("", variant: .icon(systemName), size: size, action: action)
+    /// Icon-only button. `label` is the VoiceOver/accessibility label and is **required**
+    /// — icon-only buttons otherwise fall back to the raw SF Symbol name, which is
+    /// noise for assistive tech users. The same string is also surfaced as a hover
+    /// tooltip via `.help(label)` so pointer users get a matching hint.
+    public init(
+        icon systemName: String,
+        label: String,
+        size: Size = .medium,
+        action: @escaping () -> Void
+    ) {
+        self.init(
+            "",
+            variant: .icon(systemName),
+            size: size,
+            accessibilityLabel: label,
+            action: action
+        )
     }
 
     public var body: some View {
-        Button(action: action) {
+        let button = Button(action: action) {
             label
                 .frame(height: size.height)
                 .frame(minWidth: iconOnly ? size.height : nil)
@@ -86,6 +115,14 @@ public struct SCButton: View {
             withAnimation(.easeInOut(duration: 0.12)) {
                 isHovered = hovering && isEnabled
             }
+        }
+
+        if let axLabel = accessibilityLabelOverride {
+            button
+                .accessibilityLabel(axLabel)
+                .help(axLabel)
+        } else {
+            button
         }
     }
 
@@ -146,7 +183,7 @@ public struct SCButton: View {
             SCButton("Secondary", variant: .secondary) {}
             SCButton("Ghost", variant: .ghost) {}
             SCButton("Delete", variant: .destructive) {}
-            SCButton(icon: "sparkles") {}
+            SCButton(icon: "sparkles", label: "Sparkles") {}
         }
         HStack(spacing: Spacing.sm) {
             SCButton("Small", size: .small) {}

@@ -24,6 +24,7 @@ public struct CodeBlockView: View {
                 Spacer()
                 SCButton(
                     icon: copied ? "checkmark" : "doc.on.doc",
+                    label: copied ? "Copied" : "Copy code",
                     size: .small
                 ) {
                     NSPasteboard.general.clearContents()
@@ -34,7 +35,6 @@ public struct CodeBlockView: View {
                         copied = false
                     }
                 }
-                .help(copied ? "Copied" : "Copy")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)

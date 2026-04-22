@@ -25,6 +25,7 @@ struct ChatDetailView: View {
                                     .font(.system(size: 44))
                                     .symbolRenderingMode(.hierarchical)
                                     .foregroundStyle(Theme.brandBlue)
+                                    .accessibilityHidden(true)
 
                                 Text("WHAT CAN I HELP WITH?")
                                     .font(.system(.footnote, design: .monospaced).weight(.semibold))
@@ -107,12 +108,11 @@ struct ChatDetailView: View {
 
             // Scroll-to-bottom pill — surfaces when the user scrolls up >100pt.
             if !isNearBottom, !viewModel.messages.isEmpty {
-                SCButton(icon: "arrow.down", size: .small) {
+                SCButton(icon: "arrow.down", label: "Scroll to latest", size: .small) {
                     withAnimation {
                         scrollProxy?.scrollTo("bottom", anchor: .bottom)
                     }
                 }
-                .help("Scroll to latest")
                 .padding(.trailing, 32)
                 .padding(.bottom, 88)
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))

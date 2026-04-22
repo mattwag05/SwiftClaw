@@ -47,6 +47,7 @@ public struct ReasoningDisplayView: View {
                 Image(systemName: "brain")
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.foregroundSecondary)
+                    .accessibilityHidden(true)
                 Text("Reasoning")
                     .textStyle(.captionEmph)
                     .foregroundStyle(Theme.foregroundSecondary)

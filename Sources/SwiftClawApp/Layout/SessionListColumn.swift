@@ -128,6 +128,7 @@ private struct SessionGroupHeader: View {
                 Image(systemName: "pin.fill")
                     .font(.caption2)
                     .foregroundStyle(Theme.accent)
+                    .accessibilityHidden(true)
             }
             Text(group.title)
                 .textStyle(.captionEmph)

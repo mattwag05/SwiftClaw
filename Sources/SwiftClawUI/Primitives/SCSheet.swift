@@ -36,9 +36,12 @@ public struct SCSheet<Content: View>: View {
                                 .foregroundStyle(Theme.foregroundSecondary)
                                 .frame(width: 24, height: 24)
                                 .contentShape(Rectangle())
+                                .accessibilityHidden(true)
                         }
                         .buttonStyle(.plain)
                         .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel("Dismiss")
+                        .help("Dismiss")
                     }
                 }
                 Rectangle()

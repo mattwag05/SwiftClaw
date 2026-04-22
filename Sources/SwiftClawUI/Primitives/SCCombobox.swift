@@ -60,6 +60,7 @@ public struct SCCombobox<T: Hashable>: View {
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.foregroundSecondary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.vertical, Spacing.sm)
                 .padding(.horizontal, Spacing.md)

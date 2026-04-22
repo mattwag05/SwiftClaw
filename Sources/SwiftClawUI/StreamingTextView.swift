@@ -17,6 +17,7 @@ public struct StreamingTextView: View {
                 Image(systemName: "brain")
                     .symbolEffect(.pulse)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Text("Thinking…")
                     .foregroundStyle(.secondary)
                     .italic()

@@ -15,6 +15,7 @@ public struct ErrorBannerView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.errorColor)
+                    .accessibilityHidden(true)
                 Text(message)
                     .foregroundStyle(Theme.errorColor)
                     .lineLimit(2)

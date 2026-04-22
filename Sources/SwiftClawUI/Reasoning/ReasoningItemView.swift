@@ -59,6 +59,7 @@ struct ReasoningItemView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Theme.foregroundTertiary)
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .accessibilityHidden(true)
             }
         }
     }

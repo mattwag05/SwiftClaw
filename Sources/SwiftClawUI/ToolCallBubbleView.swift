@@ -140,6 +140,7 @@ public struct WarningBubbleView: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Theme.warningColor)
                 .font(.caption)
+                .accessibilityHidden(true)
             Text(message)
                 .font(Theme.captionFont)
                 .foregroundStyle(Theme.warningColor)

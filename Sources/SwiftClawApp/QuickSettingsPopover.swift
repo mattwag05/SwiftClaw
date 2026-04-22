@@ -47,6 +47,7 @@ struct QuickSettingsPopover: View {
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.caption)
+                        .accessibilityHidden(true)
                 }
             }
             .buttonStyle(.plain)

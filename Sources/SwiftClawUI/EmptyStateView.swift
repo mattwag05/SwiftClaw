@@ -11,6 +11,7 @@ public struct EmptyStateView: View {
                 .font(.system(size: 52))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Theme.brandBlue)
+                .accessibilityHidden(true)
 
             VStack(spacing: 6) {
                 Text("START A CONVERSATION")
