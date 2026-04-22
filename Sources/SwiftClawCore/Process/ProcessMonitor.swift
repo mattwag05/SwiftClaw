@@ -1,7 +1,7 @@
+@preconcurrency import Dispatch
 import Foundation
 
 public actor ProcessMonitor {
-
     // MARK: - Private Types
 
     private struct RingBuffer<Element> {
@@ -9,7 +9,9 @@ public actor ProcessMonitor {
         private var buffer: [Element] = []
         private var writeIndex: Int = 0
 
-        init(capacity: Int) { self.capacity = capacity }
+        init(capacity: Int) {
+            self.capacity = capacity
+        }
 
         mutating func append(_ element: Element) {
             if buffer.count < capacity {
@@ -32,7 +34,7 @@ public actor ProcessMonitor {
             // The `take`-th-newest element lives at startOffset in the circular order.
             let start = (writeIndex - take) % capacity
             if start + take <= capacity {
-                return Array(buffer[start..<start + take])
+                return Array(buffer[start ..< start + take])
             }
             // Window wraps: [start...] ++ [..<remainder]
             let firstHalf = Array(buffer[start...])
@@ -45,7 +47,7 @@ public actor ProcessMonitor {
     private struct ManagedProcess {
         var info: MonitoredProcess
         var outputBuffer: RingBuffer<String>
-        var pid: Int32  // Int32 is Sendable — safe across await and actor boundaries
+        var pid: Int32 // Int32 is Sendable — safe across await and actor boundaries
     }
 
     // MARK: - State
@@ -98,7 +100,7 @@ public actor ProcessMonitor {
                 startTime: Date()
             ),
             outputBuffer: RingBuffer(capacity: 500),
-            pid: 0  // placeholder; updated via updatePid() once process actually starts
+            pid: 0 // placeholder; updated via updatePid() once process actually starts
         )
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -132,7 +134,7 @@ public actor ProcessMonitor {
                     return
                 }
 
-                let pid = process.processIdentifier  // Int32 — Sendable
+                let pid = process.processIdentifier // Int32 — Sendable
                 Task { await self.updatePid(id: id, pid: pid) }
 
                 let stdoutHandle = stdoutPipe.fileHandleForReading
@@ -226,7 +228,7 @@ public actor ProcessMonitor {
                     let chunk = String(data: data, encoding: .utf8) ?? ""
                     lineBuffer += chunk
                     var lines = lineBuffer.components(separatedBy: "\n")
-                    lineBuffer = lines.removeLast()  // keep incomplete trailing fragment
+                    lineBuffer = lines.removeLast() // keep incomplete trailing fragment
 
                     for line in lines where !line.isEmpty {
                         Task { await self.appendOutput(id: id, line: line) }
@@ -277,7 +279,7 @@ public actor ProcessMonitor {
         guard let managed = processes[id] else {
             throw SwiftClawError.processMonitoringFailed("Process \(id) not found")
         }
-        let pid = managed.pid  // Int32 — Sendable, safe across await
+        let pid = managed.pid // Int32 — Sendable, safe across await
 
         // Guard against placeholder pid — process hasn't started yet.
         // kill(0, sig) sends to the entire process group; remove and return safely.
@@ -321,6 +323,7 @@ public actor ProcessMonitor {
     }
 
     // MARK: - Actor-isolated Helpers
+
     // These are called via `Task { await self.xxx(...) }` from DispatchQueue blocks
     // and readabilityHandler closures. Only Sendable types cross the boundary.
 

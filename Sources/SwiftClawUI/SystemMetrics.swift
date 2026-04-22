@@ -1,19 +1,26 @@
-import Foundation
 import Darwin
+import Foundation
 import SwiftUI
+
+/// `mach_task_self_` is a global `var` in Darwin, which Swift 6 strict
+/// concurrency flags as shared mutable state — the read itself is rejected
+/// in a static initializer on Xcode 16.0 / Swift 6.0. `task_self_trap()` is
+/// a Mach trap function (declared in `<mach/mach_traps.h>`) that returns the
+/// same kernel-owned task port. A function call has no concurrency hazard,
+/// so the static initializer is safe.
+private let _machTaskSelf: mach_port_t = task_self_trap()
 
 /// Polls RAM and CPU usage via Mach host APIs every 2 seconds.
 @Observable
 @MainActor
 public final class SystemMetricsMonitor {
-
-    public var ramUsed: Double = 0    // GB
-    public var ramTotal: Double = 0   // GB
+    public var ramUsed: Double = 0 // GB
+    public var ramTotal: Double = 0 // GB
     public var cpuPercent: Double = 0 // 0–100
 
     private var timer: Timer?
 
-    private var prevCPUInfo: processor_info_array_t? = nil
+    private var prevCPUInfo: processor_info_array_t?
     private var prevCPUInfoCount: mach_msg_type_number_t = 0
 
     public init() {
@@ -62,8 +69,8 @@ public final class SystemMetricsMonitor {
         guard result == KERN_SUCCESS else { return }
         let pageSize = Double(sysconf(_SC_PAGESIZE))
         let usedPages = Double(stats.active_count)
-                      + Double(stats.wire_count)
-                      + Double(stats.compressor_page_count)
+            + Double(stats.wire_count)
+            + Double(stats.compressor_page_count)
         ramUsed = usedPages * pageSize / 1_073_741_824
     }
 
@@ -83,15 +90,15 @@ public final class SystemMetricsMonitor {
         var totalTicks: Double = 0
 
         if let prev = prevCPUInfo {
-            for i in 0..<Int(numCPUs) {
+            for i in 0 ..< Int(numCPUs) {
                 let base = i * stride
-                let deltaUser   = Double(info[base + Int(CPU_STATE_USER)])   - Double(prev[base + Int(CPU_STATE_USER)])
+                let deltaUser = Double(info[base + Int(CPU_STATE_USER)]) - Double(prev[base + Int(CPU_STATE_USER)])
                 let deltaSystem = Double(info[base + Int(CPU_STATE_SYSTEM)]) - Double(prev[base + Int(CPU_STATE_SYSTEM)])
-                let deltaNice   = Double(info[base + Int(CPU_STATE_NICE)])   - Double(prev[base + Int(CPU_STATE_NICE)])
-                let deltaIdle   = Double(info[base + Int(CPU_STATE_IDLE)])   - Double(prev[base + Int(CPU_STATE_IDLE)])
+                let deltaNice = Double(info[base + Int(CPU_STATE_NICE)]) - Double(prev[base + Int(CPU_STATE_NICE)])
+                let deltaIdle = Double(info[base + Int(CPU_STATE_IDLE)]) - Double(prev[base + Int(CPU_STATE_IDLE)])
                 let delta = deltaUser + deltaSystem + deltaNice + deltaIdle
                 if delta > 0 {
-                    busyTicks  += deltaUser + deltaSystem + deltaNice
+                    busyTicks += deltaUser + deltaSystem + deltaNice
                     totalTicks += delta
                 }
             }
@@ -100,10 +107,10 @@ public final class SystemMetricsMonitor {
         // Free previous allocation
         if let prev = prevCPUInfo {
             let size = vm_size_t(prevCPUInfoCount) * vm_size_t(MemoryLayout<integer_t>.size)
-            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), size)
+            vm_deallocate(_machTaskSelf, vm_address_t(bitPattern: prev), size)
         }
 
-        prevCPUInfo      = info
+        prevCPUInfo = info
         prevCPUInfoCount = numCPUInfo
 
         if totalTicks > 0 {

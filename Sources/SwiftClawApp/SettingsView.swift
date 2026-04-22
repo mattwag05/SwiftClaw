@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftClawUI
+import SwiftUI
 
 struct SettingsView: View {
     var body: some View {
@@ -20,26 +20,38 @@ struct SettingsView: View {
 
 struct GeneralSettingsTab: View {
     @Environment(ChatViewModel.self) private var viewModel
+    @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .system
 
     var body: some View {
         @Bindable var vm = viewModel
         Form {
-            Picker("Backend", selection: $vm.backendType) {
-                ForEach(BackendType.allCases, id: \.self) { t in
-                    Text(t.rawValue).tag(t)
+            Section("Appearance") {
+                Picker("Theme", selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
                 }
+                .pickerStyle(.segmented)
             }
 
-            TextField("Model ID", text: $vm.modelId)
+            Section("Backend") {
+                Picker("Backend", selection: $vm.backendType) {
+                    ForEach(BackendType.allCases, id: \.self) { t in
+                        Text(t.rawValue).tag(t)
+                    }
+                }
 
-            if viewModel.backendType == .http {
-                TextField("API URL", text: $vm.httpURL)
-                SecureField("API Key (optional)", text: $vm.httpAPIKey)
-            }
+                TextField("Model ID", text: $vm.modelId)
 
-            Button("Apply & Reload Backend") {
-                viewModel.backendState = .idle
-                Task { await viewModel.loadBackend() }
+                if viewModel.backendType == .http {
+                    TextField("API URL", text: $vm.httpURL)
+                    SecureField("API Key (optional)", text: $vm.httpAPIKey)
+                }
+
+                Button("Apply & Reload Backend") {
+                    viewModel.backendState = .idle
+                    Task { await viewModel.loadBackend() }
+                }
             }
         }
         .formStyle(.grouped)
@@ -56,7 +68,6 @@ struct ModelSettingsTab: View {
         @Bindable var vm = viewModel
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-
                 // Model Card
                 VStack(alignment: .leading, spacing: 10) {
                     let shortName = viewModel.modelId.components(separatedBy: "/").last ?? viewModel.modelId
@@ -105,14 +116,14 @@ struct ModelSettingsTab: View {
                             Text("Temperature (\(String(format: "%.2f", viewModel.temperature)))")
                                 .font(.subheadline)
                             Spacer()
-                            Slider(value: $vm.temperature, in: 0...2, step: 0.05)
+                            Slider(value: $vm.temperature, in: 0 ... 2, step: 0.05)
                                 .frame(width: 180)
                         }
                         .padding(.vertical, 6)
                         .padding(.horizontal, 8)
                         Divider()
                         Stepper("Max Tokens: \(viewModel.maxTokens)",
-                                value: $vm.maxTokens, in: 256...16384, step: 256)
+                                value: $vm.maxTokens, in: 256 ... 16384, step: 256)
                             .font(.subheadline)
                             .padding(.vertical, 6)
                             .padding(.horizontal, 8)
@@ -159,7 +170,6 @@ struct ModelSettingsTab: View {
         .task { await viewModel.refreshStorageMetrics() }
     }
 
-    @ViewBuilder
     private func storageRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
@@ -228,7 +238,7 @@ struct ToolsMemorySettingsTab: View {
             Text("MLX embeddings will load on first memory write")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        case .loading(let pct):
+        case let .loading(pct):
             HStack {
                 ProgressView().scaleEffect(0.7)
                 Text("Loading nomic-embed model (\(Int(pct * 100))%)…")

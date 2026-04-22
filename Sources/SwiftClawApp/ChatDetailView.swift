@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftClawUI
+import SwiftUI
 
 struct ChatDetailView: View {
     @Environment(ChatViewModel.self) private var viewModel
@@ -90,10 +90,9 @@ struct ChatDetailView: View {
                 )
             }
             .background(Theme.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .shadow(color: Color(red: 0.20, green: 0.15, blue: 0.10).opacity(0.15), radius: 32, x: 0, y: 8)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+            .shadow(color: Theme.shadow, radius: 32, x: 0, y: 8)
             .padding(16)
-            .colorScheme(.light)
 
             // Backend loading overlay
             if case let .loading(progress) = viewModel.backendState {
@@ -126,7 +125,7 @@ private struct DottedBackground: View {
                         var y: CGFloat = spacing
                         while y < size.height {
                             let rect = CGRect(x: x - dotRadius, y: y - dotRadius,
-                                             width: dotRadius * 2, height: dotRadius * 2)
+                                              width: dotRadius * 2, height: dotRadius * 2)
                             context.fill(Path(ellipseIn: rect), with: .color(color))
                             y += spacing
                         }
