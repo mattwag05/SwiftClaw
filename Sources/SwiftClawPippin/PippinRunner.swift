@@ -32,8 +32,49 @@ public struct PippinRunner: Sendable {
         }
     }
 
-    /// Runs a pippin subcommand. Always appends `--format json`.
+    /// Runs a pippin subcommand and unwraps the v0.20.0 agent envelope.
+    ///
+    /// Always appends `--format agent`. On success, returns the envelope's `data`
+    /// re-serialized as a pretty-printed JSON string. On envelope-level failure
+    /// (status=error), returns ``PippinError/pippinError(code:message:)`` so callers
+    /// see a typed code instead of having to scrape stderr.
     public func run(
+        subcommand: String,
+        arguments: [String] = [],
+        timeout: Int = 30
+    ) async -> Result<String, PippinError> {
+        let raw = await runRaw(subcommand: subcommand, arguments: arguments, timeout: timeout)
+        switch raw {
+        case let .failure(err):
+            return .failure(err)
+        case let .success(stdout):
+            // Surface empty stdout as a typed error instead of letting it fall
+            // through to PippinEnvelope.parse and bubble up as a generic JSON
+            // decode failure.
+            guard !stdout.isEmpty else {
+                return .failure(.envelopeMalformed("empty stdout"))
+            }
+            do {
+                let env = try PippinEnvelope.parse(stdout)
+                switch env.status {
+                case .ok:
+                    return .success(env.dataJSON ?? "null")
+                case .error:
+                    let info = env.error ?? .init(code: "unknown", message: "no error info")
+                    return .failure(.pippinError(code: info.code, message: info.message))
+                }
+            } catch let err as PippinError {
+                return .failure(err)
+            } catch {
+                return .failure(.envelopeMalformed(error.localizedDescription))
+            }
+        }
+    }
+
+    /// Internal: run pippin and return raw stdout. Does NOT parse the envelope —
+    /// kept separate so ``run(subcommand:arguments:timeout:)`` can layer parsing on top
+    /// while also giving us a hook for future tooling that wants the raw bytes.
+    func runRaw(
         subcommand: String,
         arguments: [String] = [],
         timeout: Int = 30
@@ -41,7 +82,7 @@ public struct PippinRunner: Sendable {
         await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: binaryPath)
-            process.arguments = [subcommand] + arguments + ["--format", "json"]
+            process.arguments = [subcommand] + arguments + ["--format", "agent"]
 
             let stdoutPipe = Pipe()
             let stderrPipe = Pipe()
@@ -104,16 +145,23 @@ public struct PippinRunner: Sendable {
                 return
             }
 
-            continuation.resume(returning: .success(stdout.isEmpty ? "(no output)" : stdout))
+            continuation.resume(returning: .success(stdout))
         }
     }
 }
 
-public enum PippinError: LocalizedError {
+public enum PippinError: LocalizedError, Equatable {
     case notInstalled
     case launchFailed(String)
     case timeout(Int)
     case nonZeroExit(String)
+    /// The agent envelope parsed cleanly but reported `status=error`.
+    case pippinError(code: String, message: String)
+    /// The output could not be parsed as a v1 agent envelope.
+    case envelopeMalformed(String)
+    /// Pippin returned an envelope with a schema version SwiftClaw doesn't understand.
+    /// Bump ``PippinEnvelope/supportedSchemaVersion`` (and integration tests) to fix.
+    case unsupportedSchemaVersion(Int)
 
     public var errorDescription: String? {
         switch self {
@@ -125,6 +173,12 @@ public enum PippinError: LocalizedError {
             "pippin timed out after \(seconds)s"
         case let .nonZeroExit(detail):
             "pippin error: \(detail)"
+        case let .pippinError(code, message):
+            "pippin error [\(code)]: \(message)"
+        case let .envelopeMalformed(detail):
+            "pippin returned an output SwiftClaw could not parse as an agent envelope: \(detail)"
+        case let .unsupportedSchemaVersion(v):
+            "pippin agent envelope schema v\(v) is newer than SwiftClaw supports (v\(PippinEnvelope.supportedSchemaVersion)). Update SwiftClaw."
         }
     }
 }
