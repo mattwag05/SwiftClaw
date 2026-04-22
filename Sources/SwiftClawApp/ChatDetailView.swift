@@ -45,15 +45,12 @@ struct ChatDetailView: View {
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else {
-                            LazyVStack(alignment: .leading, spacing: 14) {
-                                ForEach(viewModel.messages) { bubble in
-                                    ChatBubbleView(
-                                        bubble: bubble,
-                                        onApproveToolCall: { callId in viewModel.approveToolCall(callId: callId) },
-                                        onDenyToolCall: { callId in viewModel.denyToolCall(callId: callId) }
-                                    )
-                                    .id(bubble.id)
-                                }
+                            VStack(alignment: .leading, spacing: 0) {
+                                ChatTranscriptView(
+                                    messages: viewModel.messages,
+                                    onApproveToolCall: { callId in viewModel.approveToolCall(callId: callId) },
+                                    onDenyToolCall: { callId in viewModel.denyToolCall(callId: callId) }
+                                )
                                 Color.clear.frame(height: 1).id("bottom")
                             }
                             .padding(.horizontal, 20)
@@ -107,6 +104,16 @@ struct ChatDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                let usage = viewModel.contextUsage
+                SCContextUsageIndicator(
+                    used: usage.used,
+                    total: usage.total,
+                    isApproximate: usage.isApproximate
+                )
+            }
+        }
     }
 }
 

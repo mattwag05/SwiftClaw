@@ -21,6 +21,7 @@ struct SettingsView: View {
 struct GeneralSettingsTab: View {
     @Environment(ChatViewModel.self) private var viewModel
     @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .system
+    @AppStorage(MessageStyle.storageKey) private var messageStyle: MessageStyle = .bubbles
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -29,6 +30,13 @@ struct GeneralSettingsTab: View {
                 Picker("Theme", selection: $appearance) {
                     ForEach(AppAppearance.allCases) { mode in
                         Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Picker("Message Style", selection: $messageStyle) {
+                    ForEach(MessageStyle.allCases) { style in
+                        Text(style.label).tag(style)
                     }
                 }
                 .pickerStyle(.segmented)

@@ -741,6 +741,35 @@ final class ChatViewModel {
 
     // MARK: - Bubble Rebuild
 
+    // MARK: - Context usage
+
+    /// Estimate of context-window usage for the active chat. Uses the
+    /// backend-reported token count when available (HTTP backend), otherwise
+    /// falls back to a chars/4 heuristic. `isApproximate` is true in fallback
+    /// mode so the indicator can prefix the label with `~`.
+    var contextUsage: (used: Int, total: Int, isApproximate: Bool) {
+        let total = ModelCapabilities.forModel(id: modelId).contextWindow
+        if let usage = lastTokenUsage {
+            return (usage.totalTokens, total, false)
+        }
+        let chars = messages.reduce(0) { acc, bubble in
+            acc + bubbleCharCount(bubble)
+        }
+        return (max(1, chars / 4), total, true)
+    }
+
+    private func bubbleCharCount(_ bubble: ChatBubble) -> Int {
+        switch bubble.kind {
+        case let .user(s), let .assistant(s): return s.count
+        case let .streamingAssistant(text, thinking, _): return text.count + (thinking?.count ?? 0)
+        case let .toolCall(name, _): return name.count
+        case let .toolResult(content, _, _): return content.count
+        case let .warning(msg): return msg.count
+        case let .toolCallPending(name, arguments, _): return name.count + arguments.count
+        case let .toolCallDenied(name, _): return name.count
+        }
+    }
+
     private func rebuildBubbles(from msgs: [Message]) {
         var bubbles: [ChatBubble] = []
         for msg in msgs {

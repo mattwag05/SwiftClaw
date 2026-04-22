@@ -1,30 +1,33 @@
 import SwiftUI
 
-/// Collapsible view showing the model's reasoning/thinking content.
+/// Thin alias preserved for existing call sites.
+///
+/// The real implementation lives in `ReasoningDisplayView`, which splits a
+/// single raw reasoning blob into independently expandable groups and items.
+/// New code should prefer `ReasoningDisplayView` directly.
 public struct ThinkingContentView: View {
     public let text: String
-    @State private var isExpanded = false
 
-    public init(text: String) { self.text = text }
+    public init(text: String) {
+        self.text = text
+    }
 
     public var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            Text(text)
-                .font(Theme.monoFont)
-                .foregroundStyle(Theme.secondaryForeground)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "brain")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Theme.secondaryForeground)
-                Text("Thinking")
-                    .font(Theme.captionFont)
-                    .foregroundStyle(Theme.secondaryForeground)
-            }
-        }
-        .padding(.leading, 4)
+        ReasoningDisplayView(rawText: text)
     }
+}
+
+#Preview {
+    ThinkingContentView(
+        text: """
+        Double-checking the alias still compiles.
+        Delegates straight through to ReasoningDisplayView.
+
+        No additional behaviour lives here anymore.
+        """
+    )
+    .padding(Spacing.lg)
+    .frame(width: 420)
+    .background(Theme.surface)
+    .preferredColorScheme(.light)
 }
