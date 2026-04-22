@@ -2,6 +2,18 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [4.8] — 2026-04-21
+
+### Hash-anchored file edits
+
+**[feature]** `LineHashing.swift`, `ReadFileTool.swift`, `EditFileTool.swift` — optional line-hash anchoring for stale-safe edits. `read_file` accepts `include_hashes: true` which prefixes each emitted line with an 8-char SHA256 content hash (`a3f8c912 | import Foundation`). `edit_file` accepts optional `anchor_line` (1-based) + `anchor_hash` args; before applying the edit, the tool re-hashes the file's current line at `anchor_line` and rejects the edit with a clear "file has changed since you read it" message if the hash differs. Lets agents use short `old_string`s on large files without risking silent corruption from a stale match elsewhere.
+
+**[test]** 9 new tests in `FileToolsTests.swift` covering `LineHashing.hash` stability, `read_file` hash emission (default off, opt-in on), `edit_file` anchor happy-path (on the edited line and on a different line), stale anchor rejection, partial anchor rejection (line-only or hash-only), and out-of-range anchor line.
+
+**Summary:** 1 feature added, 9 tests added, 280/280 tests passing.
+
+---
+
 ## [4.7] — 2026-03-23
 
 ### Quality follow-up: EditFileTool precision, CharacterSet static allocation, MemoryConsolidator efficiency

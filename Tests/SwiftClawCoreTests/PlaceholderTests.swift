@@ -1,10 +1,10 @@
 import Foundation
-import Testing
 @testable import SwiftClawCore
+import Testing
 
 @Test func versionExists() {
     #expect(!SwiftClawVersion.version.isEmpty)
-    #expect(SwiftClawVersion.version == "4.7.0")
+    #expect(SwiftClawVersion.version == "4.8.0")
 }
 
 // MARK: - Message Tests
@@ -171,8 +171,8 @@ struct MockBackend: ModelBackend {
 
     func generate(
         messages: [Message],
-        tools: [ToolDefinition],
-        config: GenerationConfig
+        tools _: [ToolDefinition],
+        config _: GenerationConfig
     ) -> AsyncThrowingStream<StreamChunk, Error> {
         // Find which response to return based on message count
         // Simple heuristic: count non-system messages to determine round
@@ -196,7 +196,7 @@ struct MockBackend: ModelBackend {
 
 @Test func sessionSimpleResponse() async throws {
     let backend = MockBackend(responses: [
-        GenerationResponse(content: "Hello!", finishReason: .stop)
+        GenerationResponse(content: "Hello!", finishReason: .stop),
     ])
 
     let agent = Agent(configuration: AgentConfiguration(
@@ -246,7 +246,7 @@ struct MockBackend: ModelBackend {
     let events = await session.respond(to: "echo world")
     for try await event in events {
         switch event {
-        case .toolCallStart(_, let name):
+        case let .toolCallStart(_, name):
             if name == "echo" { toolCalled = true }
         case let .turn(response):
             finalText = response.content
@@ -261,7 +261,7 @@ struct MockBackend: ModelBackend {
 
 @Test func sessionEmitsTextDeltaEvents() async throws {
     let backend = MockBackend(responses: [
-        GenerationResponse(content: "Hello, world!", finishReason: .stop)
+        GenerationResponse(content: "Hello, world!", finishReason: .stop),
     ])
 
     let agent = Agent(configuration: AgentConfiguration(
@@ -292,7 +292,7 @@ struct MockBackend: ModelBackend {
     // MockBackend emits content as a single text chunk.
     // Content containing </think> should have the answer portion emitted.
     let backend = MockBackend(responses: [
-        GenerationResponse(content: "reasoning</think>answer", finishReason: .stop)
+        GenerationResponse(content: "reasoning</think>answer", finishReason: .stop),
     ])
 
     let agent = Agent(configuration: AgentConfiguration(
@@ -315,7 +315,7 @@ struct MockBackend: ModelBackend {
 @Test func sessionTextDeltaThinkBoundaryTurnContentIsStripped() async throws {
     // The .turn response content should also have the think block stripped.
     let backend = MockBackend(responses: [
-        GenerationResponse(content: "reasoning</think>answer", finishReason: .stop)
+        GenerationResponse(content: "reasoning</think>answer", finishReason: .stop),
     ])
 
     let agent = Agent(configuration: AgentConfiguration(
@@ -406,7 +406,7 @@ struct MockBackend: ModelBackend {
 
 @Test func sessionMaxTotalMessagesPreservesSystemMessage() async throws {
     let backend = MockBackend(responses: [
-        GenerationResponse(content: "Response", finishReason: .stop)
+        GenerationResponse(content: "Response", finishReason: .stop),
     ])
 
     let agent = Agent(configuration: AgentConfiguration(
@@ -434,7 +434,7 @@ struct MockBackend: ModelBackend {
 
 @Test func sessionEmptyResponseEmitsTurnAndDone() async throws {
     let backend = MockBackend(responses: [
-        GenerationResponse(content: "", finishReason: .stop)
+        GenerationResponse(content: "", finishReason: .stop),
     ])
 
     let agent = Agent(configuration: AgentConfiguration(
@@ -470,7 +470,7 @@ struct MockBackend: ModelBackend {
     let store = try FileSessionStore(baseDir: dir)
 
     let backend = MockBackend(responses: [
-        GenerationResponse(content: "Hello!", finishReason: .stop)
+        GenerationResponse(content: "Hello!", finishReason: .stop),
     ])
     let agentConfig = AgentConfiguration(
         name: "TestAgent", systemPrompt: "Be helpful.", tools: [], modelId: "mock"

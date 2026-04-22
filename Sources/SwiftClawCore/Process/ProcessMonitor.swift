@@ -1,3 +1,8 @@
+// DispatchWorkItem is not Sendable-annotated. cancel() is thread-safe in
+// practice, but Swift 6.0 (still current on GitHub's CodeQL runner) errors
+// on the capture inside the @Sendable readabilityHandler closure. Swift 6.3
+// downgrades it to a warning. Import Dispatch preconcurrency-qualified so
+// both toolchains accept the capture.
 @preconcurrency import Dispatch
 import Foundation
 

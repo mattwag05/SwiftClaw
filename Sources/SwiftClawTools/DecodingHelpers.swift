@@ -10,4 +10,24 @@ extension KeyedDecodingContainer {
         if let s = try? decodeIfPresent(String.self, forKey: key) { return Int(s) }
         return nil
     }
+
+    /// Decode an optional `Bool` field that the model may send as either a boolean or the string "true"/"false".
+    func decodeBoolOrStringIfPresent(forKey key: Key) throws -> Bool? {
+        if let b = try? decodeIfPresent(Bool.self, forKey: key) { return b }
+        if let s = try? decodeIfPresent(String.self, forKey: key) {
+            switch s.lowercased() {
+            case "true":
+                return true
+            case "false":
+                return false
+            default:
+                throw DecodingError.dataCorruptedError(
+                    forKey: key,
+                    in: self,
+                    debugDescription: "Expected a boolean or the string \"true\"/\"false\", but found \"\(s)\"."
+                )
+            }
+        }
+        return nil
+    }
 }

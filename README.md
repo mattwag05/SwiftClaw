@@ -223,7 +223,7 @@ swift test
 
 ## Roadmap
 
-- **v4.6** (current): Prompt caching (Anthropic + OpenAI), sentinel process monitoring
+- **v4.8** (current): Hash-anchored file edits — `read_file` emits per-line content hashes on demand; `edit_file` accepts an `anchor_line`/`anchor_hash` pair and rejects stale edits before applying
 
 **Near-term (P0 — Week 1-2):**
 - ~~Prompt caching for HTTP backend (stable system prompt + user-injected skills → 50%+ API cost reduction)~~
@@ -233,7 +233,7 @@ swift test
 **Short-term (P1 — Month 1):**
 - ~~Two-layer memory: wire `AgentMemory` into the session loop with MEMORY.md consolidation (nanobot/hermes pattern)~~
 - ~~Token counting for HTTP backend (cost visibility and limit warnings)~~
-- Hash-anchored file edits — line-hash tagging makes `write_file`/`edit` stale-safe on large files
+- ~~Hash-anchored file edits — line-hash tagging makes `write_file`/`edit` stale-safe on large files~~
 - Lazy skill loading — send skill summaries first; fetch full content on demand
 - Credential proxy — secrets intercepted before tool execution; prevents key leakage into LoRA training data
 - Apple Container sandbox for `shell` tool (macOS 26 native, replaces `FileSandbox`)

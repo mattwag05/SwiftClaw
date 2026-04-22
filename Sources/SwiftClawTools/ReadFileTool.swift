@@ -5,13 +5,14 @@ import SwiftClawCore
 public struct ReadFileTool: SwiftClawTool {
     public let name = "read_file"
     public let description =
-        "Read the contents of a text file. Returns up to `limit` lines starting at `offset`. Binary files are detected and rejected."
+        "Read the contents of a text file. Returns up to `limit` lines starting at `offset`. Binary files are detected and rejected. Set `include_hashes` to true to prefix each line with an 8-char content hash suitable for use as an edit_file anchor."
 
     public let parameterSchema: JSONSchema = .object(
         properties: [
-            "path":   .string(description: "Absolute or ~-relative path to the file"),
+            "path": .string(description: "Absolute or ~-relative path to the file"),
             "offset": .integer(description: "Line number to start reading from (1-based, default: 1)"),
-            "limit":  .integer(description: "Maximum lines to return (default: 1000)"),
+            "limit": .integer(description: "Maximum lines to return (default: 1000)"),
+            "include_hashes": .boolean(description: "Prefix each line with an 8-char content hash (for edit_file anchoring)"),
         ],
         required: ["path"]
     )
@@ -26,23 +27,20 @@ public struct ReadFileTool: SwiftClawTool {
         var path: String
         var offset: Int?
         var limit: Int?
+        var includeHashes: Bool
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             path = try c.decode(String.self, forKey: .path)
-            if let i = try? c.decodeIfPresent(Int.self, forKey: .offset) {
-                offset = i
-            } else if let s = try? c.decodeIfPresent(String.self, forKey: .offset) {
-                offset = Int(s)
-            } else { offset = nil }
-            if let i = try? c.decodeIfPresent(Int.self, forKey: .limit) {
-                limit = i
-            } else if let s = try? c.decodeIfPresent(String.self, forKey: .limit) {
-                limit = Int(s)
-            } else { limit = nil }
+            offset = try c.decodeIntOrStringIfPresent(forKey: .offset)
+            limit = try c.decodeIntOrStringIfPresent(forKey: .limit)
+            includeHashes = try c.decodeBoolOrStringIfPresent(forKey: .includeHashes) ?? false
         }
 
-        enum CodingKeys: String, CodingKey { case path, offset, limit }
+        enum CodingKeys: String, CodingKey {
+            case path, offset, limit
+            case includeHashes = "include_hashes"
+        }
     }
 
     public func execute(arguments: String) async throws -> ToolResult {
@@ -80,7 +78,7 @@ public struct ReadFileTool: SwiftClawTool {
         }
 
         let limit = args.limit ?? 1000
-        let offsetIndex = max(1, args.offset ?? 1) - 1  // convert to 0-based
+        let offsetIndex = max(1, args.offset ?? 1) - 1 // convert to 0-based
 
         let lines = text.components(separatedBy: "\n")
         let slice = Array(lines.dropFirst(offsetIndex).prefix(limit))
@@ -88,6 +86,13 @@ public struct ReadFileTool: SwiftClawTool {
         let endLine = offsetIndex + slice.count
         let header = "// \(resolved) (lines \(startLine)-\(endLine) of \(lines.count))"
 
-        return .success(header + "\n" + slice.joined(separator: "\n"))
+        let body: String
+        if args.includeHashes {
+            body = slice.map { "\(LineHashing.hash($0)) | \($0)" }.joined(separator: "\n")
+        } else {
+            body = slice.joined(separator: "\n")
+        }
+
+        return .success(header + "\n" + body)
     }
 }
