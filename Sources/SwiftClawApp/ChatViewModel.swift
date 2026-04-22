@@ -1,65 +1,86 @@
 import Foundation
 import Observation
-import SwiftUI
 import SwiftClawCore
 import SwiftClawHTTP
-import SwiftClawMLX
 import SwiftClawMemory
-import SwiftClawTools
+import SwiftClawMLX
 import SwiftClawPippin
+import SwiftClawTools
 import SwiftClawUI
+import SwiftUI
 
 // MARK: - ChatViewModel
 
 @Observable
 @MainActor
 final class ChatViewModel {
-
     // MARK: Sidebar / session list
+
     var sessions: [SessionSummary] = [] {
-        didSet { groupedSessions = SessionGrouper.group(sessions) }
+        didSet { rebuildGroupedSessions() }
     }
+
     var groupedSessions: [SessionGroup] = []
-    var selectedSessionId: String? = nil
+    var selectedSessionId: String?
+    var sessionSearch: String = "" {
+        didSet { rebuildGroupedSessions() }
+    }
+
+    var folders: [Folder] = [] {
+        didSet { rebuildGroupedSessions() }
+    }
+
+    var groupingMode: GroupingMode = .time {
+        didSet { rebuildGroupedSessions() }
+    }
 
     // MARK: Active chat
+
     var messages: [ChatBubble] = []
     var inputText: String = ""
     var isGenerating: Bool = false
     var streamingContentVersion: Int = 0
     var backendState: BackendState = .idle
-    var errorMessage: String? = nil
-    var lastTokenUsage: TokenUsage? = nil
+    var errorMessage: String?
+    var lastTokenUsage: TokenUsage?
 
     // MARK: Backend settings — persisted to UserDefaults via didSet
-    // @AppStorage is incompatible with @Observable; stored properties with didSet are the correct pattern.
+
+    /// @AppStorage is incompatible with @Observable; stored properties with didSet are the correct pattern.
     var backendType: BackendType = .http {
         didSet { UserDefaults.standard.set(backendType.rawValue, forKey: "sc.backendType") }
     }
+
     var modelId: String = "mlx-community/Qwen3.5-9B-MLX-4bit" {
         didSet { UserDefaults.standard.set(modelId, forKey: "sc.modelId") }
     }
+
     var httpURL: String = "http://localhost:11434/v1" {
         didSet { UserDefaults.standard.set(httpURL, forKey: "sc.httpURL") }
     }
+
     var httpAPIKey: String = "" {
         didSet { UserDefaults.standard.set(httpAPIKey, forKey: "sc.httpAPIKey") }
     }
+
     var temperature: Double = 0.7 {
         didSet { UserDefaults.standard.set(temperature, forKey: "sc.temperature") }
     }
+
     var maxTokens: Int = 4096 {
         didSet { UserDefaults.standard.set(maxTokens, forKey: "sc.maxTokens") }
     }
 
     // MARK: Adapter settings
+
     var adapters: [AdapterMetadata] = []
-    var selectedAdapter: String? = nil
+    var selectedAdapter: String?
     var autoAdapter: Bool = false {
         didSet { UserDefaults.standard.set(autoAdapter, forKey: "sc.autoAdapter") }
     }
 
     // MARK: Memory settings
+
     var memoryEnabled: Bool = false {
         didSet { UserDefaults.standard.set(memoryEnabled, forKey: "sc.memoryEnabled") }
     }
@@ -70,28 +91,33 @@ final class ChatViewModel {
         case ready
         case unavailable
     }
+
     var embeddingState: EmbeddingState = .idle
 
     // MARK: Tool approval
+
     var toolApprovalOverrides: [String: Bool] = [:]
-    private var pendingApproval: (callId: String, continuation: CheckedContinuation<Bool, Never>)? = nil
+    private var pendingApproval: (callId: String, continuation: CheckedContinuation<Bool, Never>)?
 
     // MARK: Private state
-    private var session: Session? = nil
-    private var backend: (any ModelBackend)? = nil
+
+    private var session: Session?
+    private var backend: (any ModelBackend)?
     private let store: FileSessionStore
-    private var generationTask: Task<Void, Never>? = nil
-    private var currentMetadata: SessionMetadata? = nil
-    private var agentMemory: (any MemoryProvider)? = nil
+    private let folderStore: FolderStore?
+    private var generationTask: Task<Void, Never>?
+    private var currentMetadata: SessionMetadata?
+    private var agentMemory: (any MemoryProvider)?
 
     init() {
         // FileSessionStore.init can throw only on directory creation failure;
         // treat that as a non-fatal startup issue.
         if let s = (try? FileSessionStore()) ?? (try? FileSessionStore(baseDir: URL(fileURLWithPath: NSTemporaryDirectory()))) {
-            self.store = s
+            store = s
         } else {
             fatalError("Cannot create FileSessionStore: both default and temp-dir attempts failed")
         }
+        folderStore = try? FolderStore()
         // Restore persisted settings
         let ud = UserDefaults.standard
         if let raw = ud.string(forKey: "sc.backendType"), let bt = BackendType(rawValue: raw) { backendType = bt }
@@ -107,6 +133,7 @@ final class ChatViewModel {
 
         Task {
             await refreshSessions()
+            await refreshFolders()
             await refreshAdapters()
         }
     }
@@ -174,10 +201,10 @@ final class ChatViewModel {
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
             systemPrompt: """
-                You are Sysop, a macOS assistant. You have access to tools for system administration, \
-                file operations (sandboxed), environment inspection, and optionally pippin CLI wrappers \
-                for Apple Mail and Voice Memos. Be concise and accurate.
-                """,
+            You are Sysop, a macOS assistant. You have access to tools for system administration, \
+            file operations (sandboxed), environment inspection, and optionally pippin CLI wrappers \
+            for Apple Mail and Voice Memos. Be concise and accurate.
+            """,
             tools: tools,
             modelId: modelId,
             generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)
@@ -331,6 +358,117 @@ final class ChatViewModel {
         sessions = (try? await store.list()) ?? []
     }
 
+    func refreshFolders() async {
+        guard let folderStore else { return }
+        folders = (try? await folderStore.list()) ?? []
+    }
+
+    // MARK: - Session organization
+
+    func pinSession(id: String) async {
+        do {
+            try await store.updateMetadata(sessionId: id) { meta in
+                meta.isPinned = true
+                meta.pinnedAt = Date()
+            }
+            await refreshSessions()
+        } catch {
+            errorMessage = "Pin failed: \(error.localizedDescription)"
+        }
+    }
+
+    func unpinSession(id: String) async {
+        do {
+            try await store.updateMetadata(sessionId: id) { meta in
+                meta.isPinned = false
+                meta.pinnedAt = nil
+            }
+            await refreshSessions()
+        } catch {
+            errorMessage = "Unpin failed: \(error.localizedDescription)"
+        }
+    }
+
+    func renameSession(id: String, to title: String) async {
+        do {
+            try await store.updateMetadata(sessionId: id) { meta in
+                meta.title = title.isEmpty ? nil : title
+            }
+            await refreshSessions()
+        } catch {
+            errorMessage = "Rename failed: \(error.localizedDescription)"
+        }
+    }
+
+    func moveSession(id: String, toFolder folderID: UUID?) async {
+        do {
+            try await store.updateMetadata(sessionId: id) { meta in
+                meta.folderID = folderID
+            }
+            await refreshSessions()
+        } catch {
+            errorMessage = "Move failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Folder management
+
+    func createFolder(name: String) async {
+        guard let folderStore, !name.isEmpty else { return }
+        do {
+            _ = try await folderStore.create(name: name)
+            await refreshFolders()
+        } catch {
+            errorMessage = "Create folder failed: \(error.localizedDescription)"
+        }
+    }
+
+    func renameFolder(id: UUID, to newName: String) async {
+        guard let folderStore else { return }
+        do {
+            try await folderStore.rename(id: id, to: newName)
+            await refreshFolders()
+        } catch {
+            errorMessage = "Rename folder failed: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteFolder(id: UUID) async {
+        guard let folderStore else { return }
+        do {
+            try await folderStore.delete(id: id)
+            // Unfile sessions that referenced this folder.
+            for session in sessions where session.folderID == id {
+                try? await store.updateMetadata(sessionId: session.sessionId) { meta in
+                    meta.folderID = nil
+                }
+            }
+            await refreshFolders()
+            await refreshSessions()
+        } catch {
+            errorMessage = "Delete folder failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Grouping
+
+    /// Filter by `sessionSearch` (case-insensitive match on title + preview)
+    /// before handing to the grouper.
+    private func rebuildGroupedSessions() {
+        let query = sessionSearch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let filtered: [SessionSummary]
+        if query.isEmpty {
+            filtered = sessions
+        } else {
+            filtered = sessions.filter { summary in
+                if summary.displayTitle.lowercased().contains(query) { return true }
+                if summary.preview.lowercased().contains(query) { return true }
+                return false
+            }
+        }
+        groupedSessions = SessionGrouper.group(filtered, mode: groupingMode, folders: folders)
+    }
+
     func refreshAdapters() async {
         adapters = (try? AdapterStore().list()) ?? []
     }
@@ -364,7 +502,8 @@ final class ChatViewModel {
             let store = (try? AdapterStore())
             let all = (try? store?.list()) ?? []
             if let selected = AdapterSelector().select(prompt: "", from: all, forModel: modelId),
-               let url = try? store?.adapterURL(name: selected.name) {
+               let url = try? store?.adapterURL(name: selected.name)
+            {
                 return url
             }
             return nil
@@ -406,7 +545,7 @@ final class ChatViewModel {
             guard let id = streamingBubbleId,
                   let idx = messages.lastIndex(where: { $0.id == id }) else { return }
             let finalText = currentText.isEmpty ? response.content : currentText
-            if finalText.isEmpty && response.toolCalls.isEmpty {
+            if finalText.isEmpty, response.toolCalls.isEmpty {
                 messages.remove(at: idx)
             } else if currentThinking != nil {
                 // Keep streaming variant so collapsible thinking section stays visible
@@ -478,8 +617,9 @@ final class ChatViewModel {
                 case .done:
                     // Finalize any streaming bubble that never got a .turn (e.g. cancelled mid-stream)
                     if let id = streamingBubbleId,
-                       let idx = messages.lastIndex(where: { $0.id == id }) {
-                        if currentText.isEmpty && currentThinking == nil {
+                       let idx = messages.lastIndex(where: { $0.id == id })
+                    {
+                        if currentText.isEmpty, currentThinking == nil {
                             messages.remove(at: idx)
                         } else if currentThinking != nil {
                             messages[idx] = ChatBubble(id: id, kind: .streamingAssistant(
@@ -499,8 +639,9 @@ final class ChatViewModel {
         } catch {
             // Finalize any open streaming bubble before showing error
             if let id = streamingBubbleId,
-               let idx = messages.lastIndex(where: { $0.id == id }) {
-                if currentText.isEmpty && currentThinking == nil {
+               let idx = messages.lastIndex(where: { $0.id == id })
+            {
+                if currentText.isEmpty, currentThinking == nil {
                     messages.remove(at: idx)
                 } else {
                     messages[idx] = ChatBubble(id: id, kind: .assistant(currentText))
@@ -517,12 +658,12 @@ final class ChatViewModel {
     // MARK: - Model Info
 
     static let modelDescriptions: [String: String] = [
-        "mlx-community/Qwen3.5-9B-MLX-4bit":          "Created by Alibaba Cloud. 9B params, 4-bit quantized.",
-        "mlx-community/Qwen2.5-7B-Instruct-4bit":      "Created by Alibaba Cloud. 7B params, 4-bit quantized.",
-        "mlx-community/Llama-3.2-3B-Instruct-4bit":    "Meta Llama 3.2, 3B params, 4-bit quantized.",
-        "mlx-community/Llama-3.3-70B-Instruct-4bit":   "Meta Llama 3.3, 70B params, 4-bit quantized.",
+        "mlx-community/Qwen3.5-9B-MLX-4bit": "Created by Alibaba Cloud. 9B params, 4-bit quantized.",
+        "mlx-community/Qwen2.5-7B-Instruct-4bit": "Created by Alibaba Cloud. 7B params, 4-bit quantized.",
+        "mlx-community/Llama-3.2-3B-Instruct-4bit": "Meta Llama 3.2, 3B params, 4-bit quantized.",
+        "mlx-community/Llama-3.3-70B-Instruct-4bit": "Meta Llama 3.3, 70B params, 4-bit quantized.",
         "mlx-community/Mistral-7B-Instruct-v0.3-4bit": "Created by Mistral AI. 7B params, 4-bit quantized.",
-        "mlx-community/phi-4-4bit":                    "Created by Microsoft. 14B params, 4-bit quantized.",
+        "mlx-community/phi-4-4bit": "Created by Microsoft. 14B params, 4-bit quantized.",
     ]
 
     var modelDescription: String {
@@ -541,7 +682,8 @@ final class ChatViewModel {
         // Extract param count like "9B", "70B", "3B", "7B", "14B"
         let range = NSRange(modelId.startIndex..., in: modelId)
         if let match = Self.paramPattern?.firstMatch(in: modelId, range: range),
-           let r = Range(match.range(at: 1), in: modelId) {
+           let r = Range(match.range(at: 1), in: modelId)
+        {
             badges.append(String(modelId[r]).uppercased())
         }
         return badges
@@ -568,7 +710,8 @@ final class ChatViewModel {
         // Volume query is fast — run while background task proceeds
         if let values = try? URL(fileURLWithPath: NSHomeDirectory())
             .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
-           let bytes = values.volumeAvailableCapacityForImportantUsage {
+            let bytes = values.volumeAvailableCapacityForImportantUsage
+        {
             availableStorage = ChatViewModel.formatBytes(Int64(bytes))
         }
 

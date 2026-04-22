@@ -1,10 +1,10 @@
 import Foundation
 import SwiftClawCore
 
-/// A time-bucketed group of sessions for display in the sidebar.
+/// A group of sessions rendered as a section header in the sidebar.
 public struct SessionGroup: Identifiable, Sendable {
-    public let id: String        // "today", "yesterday", "last7", "last30", "2026-01"
-    public let title: String     // "Today", "Yesterday", "Last 7 Days", "January 2026"
+    public let id: String
+    public let title: String
     public let sessions: [SessionSummary]
 
     public var subtitle: String {
@@ -18,26 +18,77 @@ public struct SessionGroup: Identifiable, Sendable {
     }
 }
 
-/// Groups a flat list of sessions into time buckets.
-public enum SessionGrouper {
+/// How the session list groups its rows.
+public enum GroupingMode: Sendable {
+    /// Time buckets: Today / Yesterday / Last 7 / Last 30 / month buckets.
+    /// Pinned sessions get their own group at the top.
+    case time
+    /// One group per folder, plus an `Unfiled` group for sessions with no
+    /// folder. Pinned sessions still get a top group.
+    case byFolder
+}
 
-    public static func group(_ sessions: [SessionSummary]) -> [SessionGroup] {
+public enum SessionGrouper {
+    public static func group(
+        _ sessions: [SessionSummary],
+        mode: GroupingMode = .time,
+        folders: [Folder] = []
+    ) -> [SessionGroup] {
         guard !sessions.isEmpty else { return [] }
 
-        let calendar = Calendar.current
-        let now = Date()
-        let startOfToday = calendar.startOfDay(for: now)
+        let (pinned, rest) = partitionPinned(sessions)
 
+        var groups: [SessionGroup] = []
+        if !pinned.isEmpty {
+            groups.append(SessionGroup(id: "pinned", title: "Pinned", sessions: pinned))
+        }
+
+        switch mode {
+        case .time:
+            groups.append(contentsOf: timeBuckets(rest))
+        case .byFolder:
+            groups.append(contentsOf: folderBuckets(rest, folders: folders))
+        }
+
+        return groups
+    }
+
+    private static func partitionPinned(
+        _ sessions: [SessionSummary]
+    ) -> (pinned: [SessionSummary], rest: [SessionSummary]) {
+        var pinned: [SessionSummary] = []
+        var rest: [SessionSummary] = []
+        for session in sessions {
+            if session.isPinned {
+                pinned.append(session)
+            } else {
+                rest.append(session)
+            }
+        }
+        pinned.sort { lhs, rhs in
+            let l = lhs.pinnedAt ?? lhs.updatedAt
+            let r = rhs.pinnedAt ?? rhs.updatedAt
+            return l > r
+        }
+        return (pinned, rest)
+    }
+
+    // MARK: - Time buckets
+
+    private static func timeBuckets(_ sessions: [SessionSummary]) -> [SessionGroup] {
+        guard !sessions.isEmpty else { return [] }
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
         guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday),
-              let startOf7Days     = calendar.date(byAdding: .day, value: -7, to: startOfToday),
-              let startOf30Days    = calendar.date(byAdding: .day, value: -30, to: startOfToday)
+              let startOf7Days = calendar.date(byAdding: .day, value: -7, to: startOfToday),
+              let startOf30Days = calendar.date(byAdding: .day, value: -30, to: startOfToday)
         else { return [] }
 
-        var today:     [SessionSummary] = []
+        var today: [SessionSummary] = []
         var yesterday: [SessionSummary] = []
-        var last7:     [SessionSummary] = []
-        var last30:    [SessionSummary] = []
-        var monthly:   [String: [SessionSummary]] = [:]
+        var last7: [SessionSummary] = []
+        var last30: [SessionSummary] = []
+        var monthly: [String: [SessionSummary]] = [:]
         var monthOrder: [String] = []
 
         for session in sessions {
@@ -56,30 +107,58 @@ public enum SessionGrouper {
                     monthly[key] = []
                     monthOrder.append(key)
                 }
-                monthly[key]!.append(session)
+                monthly[key]?.append(session)
             }
         }
 
         var groups: [SessionGroup] = []
-
-        if !today.isEmpty {
-            groups.append(SessionGroup(id: "today", title: "Today", sessions: today))
-        }
-        if !yesterday.isEmpty {
-            groups.append(SessionGroup(id: "yesterday", title: "Yesterday", sessions: yesterday))
-        }
-        if !last7.isEmpty {
-            groups.append(SessionGroup(id: "last7", title: "Last 7 Days", sessions: last7))
-        }
-        if !last30.isEmpty {
-            groups.append(SessionGroup(id: "last30", title: "Last 30 Days", sessions: last30))
-        }
+        if !today.isEmpty { groups.append(SessionGroup(id: "today", title: "Today", sessions: today)) }
+        if !yesterday.isEmpty { groups.append(SessionGroup(id: "yesterday", title: "Yesterday", sessions: yesterday)) }
+        if !last7.isEmpty { groups.append(SessionGroup(id: "last7", title: "Last 7 Days", sessions: last7)) }
+        if !last30.isEmpty { groups.append(SessionGroup(id: "last30", title: "Last 30 Days", sessions: last30)) }
         for key in monthOrder {
             if let sessions = monthly[key], !sessions.isEmpty {
                 groups.append(SessionGroup(id: key, title: monthTitle(for: key), sessions: sessions))
             }
         }
+        return groups
+    }
 
+    // MARK: - Folder buckets
+
+    private static func folderBuckets(
+        _ sessions: [SessionSummary],
+        folders: [Folder]
+    ) -> [SessionGroup] {
+        var byFolder: [UUID: [SessionSummary]] = [:]
+        var unfiled: [SessionSummary] = []
+
+        for session in sessions {
+            if let id = session.folderID {
+                byFolder[id, default: []].append(session)
+            } else {
+                unfiled.append(session)
+            }
+        }
+
+        let sortedFolders = folders.sorted { lhs, rhs in
+            if lhs.order != rhs.order { return lhs.order < rhs.order }
+            return lhs.createdAt < rhs.createdAt
+        }
+
+        var groups: [SessionGroup] = []
+        for folder in sortedFolders {
+            let items = (byFolder[folder.id] ?? []).sorted { $0.updatedAt > $1.updatedAt }
+            if !items.isEmpty {
+                groups.append(SessionGroup(id: "folder-\(folder.id.uuidString)",
+                                           title: folder.name,
+                                           sessions: items))
+            }
+        }
+        if !unfiled.isEmpty {
+            let items = unfiled.sorted { $0.updatedAt > $1.updatedAt }
+            groups.append(SessionGroup(id: "unfiled", title: "Unfiled", sessions: items))
+        }
         return groups
     }
 
@@ -87,7 +166,7 @@ public enum SessionGrouper {
 
     private static func monthKey(for date: Date, calendar: Calendar) -> String {
         let components = calendar.dateComponents([.year, .month], from: date)
-        let year  = components.year  ?? 2000
+        let year = components.year ?? 2000
         let month = components.month ?? 1
         return String(format: "%04d-%02d", year, month)
     }

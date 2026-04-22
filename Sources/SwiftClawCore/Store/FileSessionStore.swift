@@ -11,14 +11,14 @@ public actor FileSessionStore: SessionStore {
         let base = baseDir ?? FileManager.default
             .homeDirectoryForCurrentUser
             .appendingPathComponent(".swiftclaw")
-        self.sessionsDir = base.appendingPathComponent("sessions")
+        sessionsDir = base.appendingPathComponent("sessions")
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         enc.dateEncodingStrategy = .iso8601
-        self.encoder = enc
+        encoder = enc
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .iso8601
-        self.decoder = dec
+        decoder = dec
         try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
     }
 
@@ -77,7 +77,7 @@ public actor FileSessionStore: SessionStore {
             return []
         }
 
-        let dec = self.decoder
+        let dec = decoder
         return files.compactMap { file -> SessionSummary? in
             guard
                 let data = try? Data(contentsOf: file),
@@ -86,14 +86,45 @@ public actor FileSessionStore: SessionStore {
             let sessionId = file.deletingPathExtension().lastPathComponent
             let firstUserMessage = record.messages.first(where: { $0.role == .user })?.content ?? ""
             let preview = String(firstUserMessage.prefix(80))
+            let meta = record.metadata
             return SessionSummary(
                 sessionId: sessionId,
-                agentName: record.metadata.agentName,
+                agentName: meta.agentName,
                 messageCount: record.messages.count,
-                updatedAt: record.metadata.updatedAt,
-                preview: preview
+                updatedAt: meta.updatedAt,
+                preview: preview,
+                title: meta.title,
+                isPinned: meta.isPinned,
+                pinnedAt: meta.pinnedAt,
+                folderID: meta.folderID,
+                tags: meta.tags
             )
         }.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    public func updateMetadata(
+        sessionId: String,
+        _ transform: @Sendable (inout SessionMetadata) -> Void
+    ) async throws {
+        try sanitize(sessionId: sessionId)
+        let file = sessionsDir.appendingPathComponent("\(sessionId).json")
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            throw SwiftClawError.sessionNotFound(sessionId)
+        }
+        let data: Data
+        do {
+            data = try Data(contentsOf: file)
+        } catch {
+            throw SwiftClawError.storageError("Read failed: \(error.localizedDescription)")
+        }
+        var record = try decoder.decode(SessionRecord.self, from: data)
+        transform(&record.metadata)
+        let newData = try encoder.encode(record)
+        do {
+            try newData.write(to: file, options: .atomic)
+        } catch {
+            throw SwiftClawError.storageError("Write failed: \(error.localizedDescription)")
+        }
     }
 
     public func delete(sessionId: String) async throws {
@@ -113,6 +144,6 @@ public actor FileSessionStore: SessionStore {
 // MARK: - Private
 
 private struct SessionRecord: Codable {
-    let metadata: SessionMetadata
+    var metadata: SessionMetadata
     let messages: [Message]
 }
