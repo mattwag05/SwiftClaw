@@ -1,0 +1,97 @@
+name: CodeQL
+
+# Advanced (checked-in) CodeQL setup — replaces GitHub's default setup.
+# Rationale for the switch:
+#   1. Default setup ran on a schedule-only trigger, so failures only
+#      surfaced days after being introduced (this config failed silently
+#      on main for a month before we noticed). PR-triggered analysis
+#      catches regressions at authorship time.
+#   2. Default setup's Swift toolchain didn't match the rest of CI, so
+#      `swift build` could fail under CodeQL while passing elsewhere.
+#      Pinning Xcode here keeps the two in lockstep.
+#   3. Source-controlled config means action/version drift is reviewable.
+#   4. SPM caching — absent from default setup — cuts analysis runtime.
+#
+# After merge: disable default setup so the two don't double-run.
+#   gh api -X PATCH repos/mattwag05/SwiftClaw/code-scanning/default-setup \
+#     -f state=not-configured
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - '.github/workflows/codeql.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - '.github/workflows/codeql.yml'
+  schedule:
+    # Weekly sweep so newly-published query updates still run against main.
+    - cron: '0 14 * * 1'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: swift
+            runner: macos-15
+          - language: actions
+            runner: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1.7.0
+        if: matrix.language == 'swift'
+        with:
+          xcode-version: '16'
+
+      - name: Cache SwiftPM build
+        if: matrix.language == 'swift'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.swiftpm
+          key: spm-codeql-${{ runner.os }}-xcode16-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            spm-codeql-${{ runner.os }}-xcode16-
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'swift' && 'manual' || 'none' }}
+
+      - name: Build Swift package
+        if: matrix.language == 'swift'
+        run: swift build
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3
+        with:
+          category: /language:${{ matrix.language }}
