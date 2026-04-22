@@ -23,3 +23,11 @@ AGENTS.md
 
 # Claude Code local config
 .claude/
+
+# Finder / iCloud "2" conflict duplicates (e.g. "Foo 2.swift").
+# These byte-identical copies break the build with "invalid redeclaration"
+# errors. If you genuinely need a file whose basename ends in " 2", rename
+# it — this pattern is purely a macOS filesystem artifact.
+*\ 2.swift
+*\ 2.yml
+*\ 2.yaml
