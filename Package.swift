@@ -55,5 +55,6 @@ let package = Package(
         .testTarget(name: "SwiftClawMLXTests", dependencies: ["SwiftClawMLX"]),
         .testTarget(name: "SwiftClawPippinTests", dependencies: ["SwiftClawPippin"]),
         .testTarget(name: "SwiftClawMemoryTests", dependencies: ["SwiftClawMemory"]),
+        .testTarget(name: "SwiftClawUITests", dependencies: ["SwiftClawUI"]),
     ]
 )
