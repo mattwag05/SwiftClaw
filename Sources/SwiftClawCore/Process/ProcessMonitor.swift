@@ -132,16 +132,18 @@ public actor ProcessMonitor {
                 do {
                     try process.run()
                 } catch {
-                    Task { await self.removeProcess(id: id) }
-                    continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
-                        "Failed to launch '\(command)': \(error.localizedDescription)"
-                    ))
+                    // Remove the entry on the actor before resuming, so the
+                    // caller never sees a stale .launching entry in list().
+                    Task {
+                        await self.removeProcess(id: id)
+                        continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
+                            "Failed to launch '\(command)': \(error.localizedDescription)"
+                        ))
+                    }
                     return
                 }
 
                 let pid = process.processIdentifier // Int32 — Sendable
-                Task { await self.updatePid(id: id, pid: pid) }
-
                 let stdoutHandle = stdoutPipe.fileHandleForReading
 
                 // ── No ready marker: set up readabilityHandler and resume immediately ──
@@ -171,8 +173,15 @@ public actor ProcessMonitor {
                         let exitCode = p.terminationStatus
                         Task { await self.updateState(id: id, state: .stopped(exitCode)) }
                     }
-                    Task { await self.updateState(id: id, state: .ready) }
-                    continuation.resume(returning: id)
+                    // Publish the PID, then state, THEN resume — all in the same Task —
+                    // so a caller that immediately queries list()/state(id:) sees the
+                    // real pid and .ready state, and an immediate stop(id:) won't hit
+                    // the pid == 0 placeholder guard and miss signalling the live process.
+                    Task {
+                        await self.updatePid(id: id, pid: pid)
+                        await self.updateState(id: id, state: .ready)
+                        continuation.resume(returning: id)
+                    }
                     return
                 }
 
@@ -197,10 +206,15 @@ public actor ProcessMonitor {
                     }
                     guard shouldResume else { return }
                     stdoutHandle.readabilityHandler = nil
-                    Task { await self.updateState(id: id, state: .failed("Timeout waiting for '\(marker)'")) }
-                    continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
-                        "Timeout waiting for ready marker '\(marker)' from '\(command)'"
-                    ))
+                    // State update must land on the actor before the throw surfaces,
+                    // so callers catching the error can immediately see .failed(...)
+                    // in list() / state(id:). Same rationale as the success paths.
+                    Task {
+                        await self.updateState(id: id, state: .failed("Timeout waiting for '\(marker)'"))
+                        continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
+                            "Timeout waiting for ready marker '\(marker)' from '\(command)'"
+                        ))
+                    }
                 }
                 DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutItem)
 
@@ -223,10 +237,14 @@ public actor ProcessMonitor {
                         // terminationStatus is safe to read here: EOF on the pipe
                         // means the write end is closed, which only happens after exit.
                         let exitCode = process.terminationStatus
-                        Task { await self.updateState(id: id, state: .stopped(exitCode)) }
-                        continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
-                            "Process '\(command)' exited with code \(exitCode) before ready marker '\(marker)' was seen"
-                        ))
+                        // Land the state update on the actor before throwing, so the
+                        // caller's follow-up list()/state(id:) reflects .stopped.
+                        Task {
+                            await self.updateState(id: id, state: .stopped(exitCode))
+                            continuation.resume(throwing: SwiftClawError.processMonitoringFailed(
+                                "Process '\(command)' exited with code \(exitCode) before ready marker '\(marker)' was seen"
+                            ))
+                        }
                         return
                     }
 
@@ -247,8 +265,17 @@ public actor ProcessMonitor {
                         if shouldResume {
                             timeoutItem.cancel()
                             fh.readabilityHandler = nil
-                            Task { await self.updateState(id: id, state: .ready) }
-                            continuation.resume(returning: id)
+                            // Publish PID + state on the actor BEFORE resuming, in a
+                            // single Task. Otherwise the caller's immediate
+                            // list()/state(id:) can slip in before the state-update
+                            // runs and see stale .launching, and an immediate
+                            // stop(id:) can observe pid == 0 and miss the live process.
+                            // This was the race behind ProcessMonitorTests.readyMarkerDetected.
+                            Task {
+                                await self.updatePid(id: id, pid: pid)
+                                await self.updateState(id: id, state: .ready)
+                                continuation.resume(returning: id)
+                            }
                             // Don't break — remaining lines in this batch still get buffered
                             // via the appendOutput Tasks that already fired above the marker.
                         }
@@ -355,6 +382,17 @@ public actor ProcessMonitor {
     }
 
     private func updateState(id: String, state: ProcessState) {
-        processes[id]?.info.state = state
+        // Terminal states win against late-arriving .ready writes. A fast-exiting
+        // process's terminationHandler can fire .stopped(exitCode) on the actor
+        // before the marker-detection/no-marker path's .ready write lands, and we
+        // must not overwrite the real exit with a stale "ready".
+        guard var managed = processes[id] else { return }
+        switch managed.info.state {
+        case .stopped, .failed:
+            return
+        case .launching, .ready:
+            managed.info.state = state
+            processes[id] = managed
+        }
     }
 }
