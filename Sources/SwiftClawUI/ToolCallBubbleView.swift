@@ -1,46 +1,20 @@
 import SwiftUI
 
-// MARK: - Status pill helper
-
-private struct StatusPill: View {
-    let icon: String
-    let label: String
-    let bg: Color
-    let fg: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-            Text(label.uppercased())
-                .font(Theme.monoFont)
-                .fontWeight(.semibold)
-        }
-        .foregroundStyle(fg)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(bg, in: Capsule())
-    }
-}
-
 // MARK: - Tool running
 
 public struct ToolCallBubbleView: View {
     public let name: String
 
-    public init(name: String) { self.name = name }
+    public init(name: String) {
+        self.name = name
+    }
 
     public var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Spacing.sm) {
             Text(name)
                 .font(Theme.monoLabelFont)
                 .foregroundStyle(Theme.secondaryForeground)
-            StatusPill(
-                icon: "arrow.trianglehead.2.clockwise",
-                label: "Running",
-                bg: Theme.pillRunning,
-                fg: Theme.pillRunningFG
-            )
+            SCStatusPill(.running)
         }
         .padding(.leading, 2)
     }
@@ -66,16 +40,11 @@ public struct ToolResultBubbleView: View {
                 .padding(.top, 6)
                 .padding(.horizontal, 2)
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Spacing.sm) {
                 Text("result")
                     .font(Theme.monoLabelFont)
                     .foregroundStyle(Theme.secondaryForeground)
-                StatusPill(
-                    icon: isError ? "xmark" : "checkmark",
-                    label: isError ? "Error" : "Done",
-                    bg: isError ? Theme.pillError : Theme.pillDone,
-                    fg: isError ? Theme.pillErrorFG : Theme.pillDoneFG
-                )
+                SCStatusPill(isError ? .error : .done)
             }
         }
         .padding(.leading, 2)
@@ -99,16 +68,11 @@ public struct ToolCallPendingView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+            HStack(spacing: Spacing.sm) {
                 Text(name)
                     .font(Theme.monoLabelFont)
                     .foregroundStyle(Theme.primaryForeground)
-                StatusPill(
-                    icon: "exclamationmark",
-                    label: "Needs Approval",
-                    bg: Theme.pillPending,
-                    fg: Theme.pillPendingFG
-                )
+                SCStatusPill(.pending, label: "NEEDS APPROVAL")
             }
             DisclosureGroup {
                 Text(arguments)
@@ -146,19 +110,16 @@ public struct ToolCallPendingView: View {
 public struct ToolCallDeniedView: View {
     public let name: String
 
-    public init(name: String) { self.name = name }
+    public init(name: String) {
+        self.name = name
+    }
 
     public var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Spacing.sm) {
             Text(name)
                 .font(Theme.monoLabelFont)
                 .foregroundStyle(Theme.secondaryForeground)
-            StatusPill(
-                icon: "xmark.shield",
-                label: "Denied",
-                bg: Theme.pillDenied,
-                fg: Theme.pillDeniedFG
-            )
+            SCStatusPill(.denied)
         }
         .padding(.leading, 2)
     }
@@ -169,7 +130,9 @@ public struct ToolCallDeniedView: View {
 public struct WarningBubbleView: View {
     public let message: String
 
-    public init(message: String) { self.message = message }
+    public init(message: String) {
+        self.message = message
+    }
 
     public var body: some View {
         HStack(spacing: 6) {

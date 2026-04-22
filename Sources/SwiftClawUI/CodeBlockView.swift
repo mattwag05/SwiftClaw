@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Styled fenced code block with language label and copy-to-clipboard button.
 public struct CodeBlockView: View {
@@ -22,7 +22,10 @@ public struct CodeBlockView: View {
                         .foregroundStyle(Theme.secondaryForeground)
                 }
                 Spacer()
-                Button {
+                SCButton(
+                    icon: copied ? "checkmark" : "doc.on.doc",
+                    size: .small
+                ) {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)
                     copied = true
@@ -30,15 +33,8 @@ public struct CodeBlockView: View {
                         try? await Task.sleep(nanoseconds: 2_000_000_000)
                         copied = false
                     }
-                } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        Text(copied ? "Copied" : "Copy")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(Theme.secondaryForeground)
                 }
-                .buttonStyle(.plain)
+                .help(copied ? "Copied" : "Copy")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
