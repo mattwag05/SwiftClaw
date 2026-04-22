@@ -13,6 +13,7 @@ struct SessionListColumn: View {
 
     @State private var renameTarget: SessionSummary?
     @State private var renameValue = ""
+    @State private var deleteTarget: SessionSummary?
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -51,6 +52,15 @@ struct SessionListColumn: View {
             } onCancel: {
                 renameTarget = nil
             }
+        }
+        .deleteConfirmationSheet(
+            item: $deleteTarget,
+            title: "Delete chat?",
+            message: { summary in
+                "“\(summary.displayTitle)” will be permanently removed. This cannot be undone."
+            }
+        ) { summary in
+            Task { await vm.deleteSession(id: summary.sessionId) }
         }
     }
 
@@ -110,7 +120,7 @@ struct SessionListColumn: View {
         Divider()
 
         Button(role: .destructive) {
-            Task { await viewModel.deleteSession(id: summary.sessionId) }
+            deleteTarget = summary
         } label: {
             Label("Delete", systemImage: "trash")
         }

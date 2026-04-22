@@ -38,10 +38,10 @@ public actor Session {
         self.memory = memory
         self.approvalDelegate = approvalDelegate
         self.processMonitor = processMonitor
-        self.consolidator = MemoryConsolidator()
-        self.compressor = ContextCompressor()
-        self.messages = [
-            Message(role: .system, content: agent.configuration.systemPrompt)
+        consolidator = MemoryConsolidator()
+        compressor = ContextCompressor()
+        messages = [
+            Message(role: .system, content: agent.configuration.systemPrompt),
         ]
     }
 
@@ -64,9 +64,9 @@ public actor Session {
         self.memory = memory
         self.approvalDelegate = approvalDelegate
         self.processMonitor = processMonitor
-        self.consolidator = MemoryConsolidator()
-        self.compressor = ContextCompressor()
-        self.messages = restoredMessages
+        consolidator = MemoryConsolidator()
+        compressor = ContextCompressor()
+        messages = restoredMessages
     }
 
     /// Save the current conversation to a store.
@@ -153,7 +153,8 @@ public actor Session {
 
         // 3. Context compression (before hard trim)
         if let threshold = config.compressionTokenThreshold,
-           compressor.estimateTokens(messages) > threshold {
+           compressor.estimateTokens(messages) > threshold
+        {
             // If memory enabled, consolidate the compressible region first
             if config.memoryEnabled, let mem = memory, let sid = sessionId {
                 let compressible = Array(messages.dropFirst().dropLast(config.compressionKeepRecent))
@@ -194,12 +195,12 @@ public actor Session {
 
         // 5. Agentic loop
         var lastResponse = GenerationResponse(content: "", finishReason: .stop)
-        for _ in 0..<config.maxToolRoundTrips {
+        for _ in 0 ..< config.maxToolRoundTrips {
             // Streaming generation with think-block detection.
             // Text chunks are buffered until we know if they're thinking or real content.
             // Buffering per-chunk (not concatenated) so each can be flushed individually.
-            var bufferedChunks: [String] = []  // Pre-</think> chunks, waiting for classification
-            var postThinkText = ""             // Confirmed real text (after </think>)
+            var bufferedChunks: [String] = [] // Pre-</think> chunks, waiting for classification
+            var postThinkText = "" // Confirmed real text (after </think>)
             var sawThinkEnd = false
             var accumulatedToolCalls: [ToolCallRequest] = []
             var finishReason: StreamChunk.FinishReason = .stop
@@ -226,7 +227,7 @@ public actor Session {
                         let combined = bufferedChunks.joined()
                         if let range = combined.range(of: "</think>") {
                             sawThinkEnd = true
-                            var thinkPart = String(combined[combined.startIndex..<range.lowerBound])
+                            var thinkPart = String(combined[combined.startIndex ..< range.lowerBound])
                             thinkPart = thinkPart
                                 .replacingOccurrences(of: "<think>", with: "")
                                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -251,7 +252,7 @@ public actor Session {
             }
 
             // If no </think> found, flush each buffered chunk individually as text deltas
-            if !sawThinkEnd && !bufferedChunks.isEmpty {
+            if !sawThinkEnd, !bufferedChunks.isEmpty {
                 for buffered in bufferedChunks {
                     let cleaned = stripToolCallXML(buffered)
                     if !cleaned.isEmpty {
@@ -381,7 +382,9 @@ public actor Session {
         continuation.yield(.done)
     }
 
-    private func setRunning(_ value: Bool) { isRunning = value }
+    private func setRunning(_ value: Bool) {
+        isRunning = value
+    }
 
     /// Strip tool-call XML blocks from a text chunk (Qwen3.5 text-injection format).
     private func stripToolCallXML(_ text: String) -> String {
@@ -421,5 +424,20 @@ public actor Session {
     /// Current conversation history (read-only snapshot).
     public var conversationHistory: [Message] {
         messages
+    }
+
+    /// Rewinds the conversation to just before the most recent user turn,
+    /// dropping that user message along with any assistant/tool messages
+    /// that followed it. Returns the dropped user content so callers can
+    /// re-submit it (regenerate flow). Returns nil if there is no user
+    /// message to rewind past, or if a generation is currently in flight.
+    public func rewindToPriorUser() -> String? {
+        guard !isRunning else { return nil }
+        guard let lastUserIdx = messages.lastIndex(where: { $0.role == .user }) else {
+            return nil
+        }
+        let content = messages[lastUserIdx].content
+        messages.removeSubrange(lastUserIdx...)
+        return content
     }
 }

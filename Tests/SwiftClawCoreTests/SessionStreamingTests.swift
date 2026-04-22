@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import SwiftClawCore
+import Testing
 
 // MARK: - Multi-Chunk Mock Backend
 
@@ -9,9 +9,9 @@ struct MultiChunkBackend: ModelBackend {
     let chunks: [StreamChunk]
 
     func generate(
-        messages: [Message],
-        tools: [ToolDefinition],
-        config: GenerationConfig
+        messages _: [Message],
+        tools _: [ToolDefinition],
+        config _: GenerationConfig
     ) -> AsyncThrowingStream<StreamChunk, Error> {
         let chunks = self.chunks
         return AsyncThrowingStream { continuation in
@@ -136,4 +136,44 @@ struct MultiChunkBackend: ModelBackend {
     #expect(thinkingDeltas.isEmpty)
     #expect(textDeltas == ["Simple ", "answer"])
     #expect(turnContent == "Simple answer")
+}
+
+// MARK: - Rewind
+
+@Test func rewindToPriorUserDropsLastTurn() async throws {
+    let backend = MultiChunkBackend(chunks: [
+        StreamChunk(text: "reply one"),
+        StreamChunk(finishReason: .stop),
+    ])
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "sys", tools: [], modelId: "mock"
+    ))
+    let session = Session(agent: agent, backend: backend)
+
+    // Run one turn so history = [system, user, assistant].
+    for try await _ in await session.respond(to: "hello") {}
+    let before = await session.conversationHistory
+    #expect(before.count == 3)
+    #expect(before[1].role == .user)
+    #expect(before[2].role == .assistant)
+
+    let dropped = await session.rewindToPriorUser()
+    #expect(dropped == "hello")
+
+    let after = await session.conversationHistory
+    #expect(after.count == 1)
+    #expect(after[0].role == .system)
+}
+
+@Test func rewindToPriorUserReturnsNilWhenNoUserTurn() async {
+    let backend = MultiChunkBackend(chunks: [StreamChunk(finishReason: .stop)])
+    let agent = Agent(configuration: AgentConfiguration(
+        name: "Test", systemPrompt: "sys", tools: [], modelId: "mock"
+    ))
+    let session = Session(agent: agent, backend: backend)
+
+    let dropped = await session.rewindToPriorUser()
+    #expect(dropped == nil)
+    let hist = await session.conversationHistory
+    #expect(hist.count == 1) // system only
 }

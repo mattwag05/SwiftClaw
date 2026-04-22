@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import SwiftClawCore
@@ -284,6 +285,57 @@ final class ChatViewModel {
                     self?.pendingApproval = (callId, cont)
                 }
             }
+        }
+    }
+
+    // MARK: - Message Actions
+
+    @discardableResult
+    func copyBubble(_ bubble: ChatBubble) -> String {
+        guard let text = bubble.kind.fullText, !text.isEmpty else { return "" }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        return text
+    }
+
+    /// Rewind to just before the most recent user turn and re-submit it.
+    /// No-ops if a generation is in flight or no prior user turn exists.
+    /// `isGenerating` is set synchronously before the task spawns so a fast
+    /// second click (or concurrent Send) can't drop a second user turn; the
+    /// session id is snapshotted so a mid-flight session switch aborts the
+    /// resubmit rather than mutating the new session's bubble array.
+    ///
+    /// The visible transcript is only truncated AFTER confirming the session
+    /// was actually rewound (`prompt != nil`) and the selection still matches
+    /// — otherwise a failed rewind would drop UI history without a matching
+    /// session-state change. `isGenerating` stays `true` through the handoff
+    /// to `doSend`, so a concurrent Send/regenerate click can't slip in
+    /// during the gap.
+    func regenerate() {
+        guard !isGenerating, let agentSession = session else { return }
+        let sessionIdSnapshot = selectedSessionId
+        isGenerating = true
+        generationTask = Task { [weak self] in
+            guard let self else { return }
+            let rewoundPrompt = await agentSession.rewindToPriorUser()
+            let prompt: String? = await MainActor.run {
+                guard let rewoundPrompt, self.selectedSessionId == sessionIdSnapshot else {
+                    self.isGenerating = false
+                    return nil
+                }
+                if let lastUser = self.messages.lastIndex(where: {
+                    if case .user = $0.kind { return true }
+                    return false
+                }) {
+                    self.messages.removeSubrange(lastUser...)
+                }
+                return rewoundPrompt
+            }
+            guard let prompt else { return }
+            // doSend owns isGenerating through the resubmission; leaving it
+            // true across the hand-off blocks a concurrent Send/regenerate.
+            await self.doSend(prompt)
         }
     }
 
@@ -756,6 +808,19 @@ final class ChatViewModel {
             acc + bubbleCharCount(bubble)
         }
         return (max(1, chars / 4), total, true)
+    }
+
+    /// Breakdown of the most recent turn's token usage, shaped for the
+    /// `SCContextUsageIndicator` tooltip. Nil until a backend has reported
+    /// usage (HTTP only; MLX backend doesn't emit it).
+    var contextUsageBreakdown: SCContextUsageIndicator.Breakdown? {
+        guard let u = lastTokenUsage else { return nil }
+        return SCContextUsageIndicator.Breakdown(
+            promptTokens: u.promptTokens,
+            completionTokens: u.completionTokens,
+            cacheReadTokens: u.cacheReadTokens,
+            cacheCreationTokens: u.cacheCreationTokens
+        )
     }
 
     private func bubbleCharCount(_ bubble: ChatBubble) -> Int {

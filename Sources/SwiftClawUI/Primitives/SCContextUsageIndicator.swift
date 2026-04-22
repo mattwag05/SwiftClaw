@@ -6,21 +6,43 @@ import SwiftUI
 /// `destructive` (≥ 0.95). The `.help(...)` tooltip shows the full
 /// `used / total tokens (percent%)` breakdown with locale-aware grouping.
 public struct SCContextUsageIndicator: View {
+    public struct Breakdown: Sendable {
+        public var promptTokens: Int
+        public var completionTokens: Int
+        public var cacheReadTokens: Int?
+        public var cacheCreationTokens: Int?
+
+        public init(
+            promptTokens: Int,
+            completionTokens: Int,
+            cacheReadTokens: Int? = nil,
+            cacheCreationTokens: Int? = nil
+        ) {
+            self.promptTokens = promptTokens
+            self.completionTokens = completionTokens
+            self.cacheReadTokens = cacheReadTokens
+            self.cacheCreationTokens = cacheCreationTokens
+        }
+    }
+
     private let used: Int
     private let total: Int
     private let isApproximate: Bool
     private let threshold: Double
+    private let breakdown: Breakdown?
 
     public init(
         used: Int,
         total: Int,
         isApproximate: Bool = false,
-        threshold: Double = 0.85
+        threshold: Double = 0.85,
+        breakdown: Breakdown? = nil
     ) {
         self.used = used
         self.total = total
         self.isApproximate = isApproximate
         self.threshold = threshold
+        self.breakdown = breakdown
     }
 
     private var percent: Double {
@@ -43,13 +65,35 @@ public struct SCContextUsageIndicator: View {
         return "\(prefix)\(percentInt)%"
     }
 
-    private var tooltip: String {
+    private static let groupedFormatter: NumberFormatter = {
         let fmt = NumberFormatter()
         fmt.numberStyle = .decimal
         fmt.usesGroupingSeparator = true
-        let usedStr = fmt.string(from: NSNumber(value: used)) ?? "\(used)"
-        let totalStr = fmt.string(from: NSNumber(value: total)) ?? "\(total)"
-        return "\(usedStr) / \(totalStr) tokens (\(percentInt)%)"
+        return fmt
+    }()
+
+    private var tooltip: String {
+        func f(_ n: Int) -> String {
+            Self.groupedFormatter.string(from: NSNumber(value: n)) ?? "\(n)"
+        }
+        var lines = ["\(f(used)) / \(f(total)) tokens (\(percentInt)%)"]
+        if let b = breakdown {
+            lines.append("Prompt: \(f(b.promptTokens))  ·  Completion: \(f(b.completionTokens))")
+            // Emit read and write independently — a first-cache-creation request
+            // reports read=0 but write>0, and we still want the user to see that
+            // cache was written.
+            var cacheParts: [String] = []
+            if let read = b.cacheReadTokens, read > 0 {
+                cacheParts.append("Cache read: \(f(read))")
+            }
+            if let write = b.cacheCreationTokens, write > 0 {
+                cacheParts.append("Cache write: \(f(write))")
+            }
+            if !cacheParts.isEmpty {
+                lines.append(cacheParts.joined(separator: "  ·  "))
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     public var body: some View {

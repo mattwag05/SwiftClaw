@@ -128,6 +128,37 @@ public struct SCAlertDialog: View {
     }
 }
 
+// MARK: - Delete-confirmation sheet modifier
+
+public extension View {
+    /// Presents an `SCAlertDialog` in a sheet when `item` is non-nil, wired
+    /// for the destructive-confirm pattern (red confirm button, `.delete`
+    /// iconography). Cancel and post-confirm clear `item` back to nil.
+    func deleteConfirmationSheet<Item: Identifiable>(
+        item: Binding<Item?>,
+        title: String,
+        message: @escaping (Item) -> String,
+        confirmLabel: String = "Delete",
+        onConfirm: @escaping (Item) -> Void
+    ) -> some View {
+        sheet(item: item) { value in
+            SCAlertDialog(
+                kind: .delete,
+                title: title,
+                message: message(value),
+                confirmLabel: confirmLabel
+            ) {
+                onConfirm(value)
+                item.wrappedValue = nil
+            } onCancel: {
+                item.wrappedValue = nil
+            }
+            .frame(width: 440)
+            .padding(Spacing.xl)
+        }
+    }
+}
+
 #Preview("SCAlertDialog — delete, light") {
     SCAlertDialog(
         kind: .delete,

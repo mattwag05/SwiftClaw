@@ -31,6 +31,19 @@ public struct ChatBubble: Identifiable, Sendable {
             default: return nil
             }
         }
+
+        /// The bubble's copyable body text, or `nil` for kinds with no
+        /// meaningful textual content (pending/denied tool calls, name-only
+        /// tool-call markers). Callers that need a char count can use `.count`.
+        public var fullText: String? {
+            switch self {
+            case let .user(text), let .assistant(text): return text
+            case let .streamingAssistant(text, _, _): return text
+            case let .toolResult(content, _, _): return content
+            case let .warning(msg): return msg
+            case .toolCall, .toolCallPending, .toolCallDenied: return nil
+            }
+        }
     }
 }
 
@@ -43,7 +56,7 @@ public enum BackendType: String, CaseIterable, Sendable {
 
 public enum BackendState: Equatable, Sendable {
     case idle
-    case loading(Double)   // 0.0 – 1.0
+    case loading(Double) // 0.0 – 1.0
     case ready
     case error(String)
 }

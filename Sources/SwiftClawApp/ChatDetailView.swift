@@ -51,7 +51,9 @@ struct ChatDetailView: View {
                                 ChatTranscriptView(
                                     messages: viewModel.messages,
                                     onApproveToolCall: { callId in viewModel.approveToolCall(callId: callId) },
-                                    onDenyToolCall: { callId in viewModel.denyToolCall(callId: callId) }
+                                    onDenyToolCall: { callId in viewModel.denyToolCall(callId: callId) },
+                                    onCopyBubble: { bubble in viewModel.copyBubble(bubble) },
+                                    onRegenerateBubble: { _ in viewModel.regenerate() }
                                 )
                                 Color.clear.frame(height: 1).id("bottom")
                             }
@@ -126,7 +128,8 @@ struct ChatDetailView: View {
                 SCContextUsageIndicator(
                     used: usage.used,
                     total: usage.total,
-                    isApproximate: usage.isApproximate
+                    isApproximate: usage.isApproximate,
+                    breakdown: viewModel.contextUsageBreakdown
                 )
             }
         }

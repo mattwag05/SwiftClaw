@@ -10,17 +10,23 @@ public struct ChatTranscriptView: View {
     public let messages: [ChatBubble]
     public var onApproveToolCall: ((String) -> Void)?
     public var onDenyToolCall: ((String) -> Void)?
+    public var onCopyBubble: ((ChatBubble) -> Void)?
+    public var onRegenerateBubble: ((ChatBubble) -> Void)?
 
     @AppStorage(MessageStyle.storageKey) private var style: MessageStyle = .bubbles
 
     public init(
         messages: [ChatBubble],
         onApproveToolCall: ((String) -> Void)? = nil,
-        onDenyToolCall: ((String) -> Void)? = nil
+        onDenyToolCall: ((String) -> Void)? = nil,
+        onCopyBubble: ((ChatBubble) -> Void)? = nil,
+        onRegenerateBubble: ((ChatBubble) -> Void)? = nil
     ) {
         self.messages = messages
         self.onApproveToolCall = onApproveToolCall
         self.onDenyToolCall = onDenyToolCall
+        self.onCopyBubble = onCopyBubble
+        self.onRegenerateBubble = onRegenerateBubble
     }
 
     public var body: some View {
@@ -80,7 +86,9 @@ public struct ChatTranscriptView: View {
             ChatBubbleView(
                 bubble: bubble,
                 onApproveToolCall: onApproveToolCall,
-                onDenyToolCall: onDenyToolCall
+                onDenyToolCall: onDenyToolCall,
+                onCopy: onCopyBubble.map { handler in { handler(bubble) } },
+                onRegenerate: onRegenerateBubble.map { handler in { handler(bubble) } }
             )
         case let .toolGroup(bubbles):
             ToolGroupView(items: bubbles.compactMap { $0.toolGroupItem })

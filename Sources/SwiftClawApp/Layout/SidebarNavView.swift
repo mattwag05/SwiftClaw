@@ -16,6 +16,7 @@ struct SidebarNavView: View {
 
     @State private var showNewFolder = false
     @State private var newFolderName = ""
+    @State private var deleteTarget: Folder?
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -35,7 +36,7 @@ struct SidebarNavView: View {
                                 renameValue = folder.name
                             }
                             Button("Delete", role: .destructive) {
-                                Task { await vm.deleteFolder(id: folder.id) }
+                                deleteTarget = folder
                             }
                         }
                 }
@@ -73,6 +74,20 @@ struct SidebarNavView: View {
             } onCancel: {
                 renameTarget = nil
             }
+        }
+        .deleteConfirmationSheet(
+            item: $deleteTarget,
+            title: "Delete folder?",
+            message: { folder in
+                let childCount = viewModel.sessions.count(where: { $0.folderID == folder.id })
+                switch childCount {
+                case 0: return "“\(folder.name)” will be removed. No chats will be deleted."
+                case 1: return "“\(folder.name)” will be removed and its 1 chat moved to Unfiled."
+                default: return "“\(folder.name)” will be removed and its \(childCount) chats moved to Unfiled."
+                }
+            }
+        ) { folder in
+            Task { await vm.deleteFolder(id: folder.id) }
         }
     }
 
