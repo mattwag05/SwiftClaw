@@ -3,28 +3,61 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
 
 permissions:
   contents: read
+
+# Cancel stale runs on the same PR/branch — a second push supersedes the first.
+# Never cancel runs on main (those are merge commits, not WIP iterations).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-and-test:
     name: Build & Test
     runs-on: macos-15
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
+      - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1.7.0
+        with:
+          xcode-version: '16'
 
       - name: Swift version
         run: swift --version
+
+      # Cache SPM artifacts keyed on Package.resolved. MLX / mlx-swift-lm /
+      # swift-transformers / GRDB / etc. pull ~40 transitive deps; a cold
+      # checkout rebuilds them all. The restore-keys fallback lets us reuse
+      # most artifacts across minor dep drift without a full re-resolve.
+      - name: Cache SwiftPM build
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.swiftpm
+          key: spm-${{ runner.os }}-xcode16-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-xcode16-
 
       - name: Build (debug)
         run: swift build
 
       - name: Test
-        run: swift test
+        run: swift test --parallel

@@ -1,19 +1,32 @@
 name: Unicode Safety Scan
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: unicode-scan-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   scan:
-    runs-on: macos-latest
+    # Grep is OS-agnostic. ubuntu-latest boots faster and costs ~10× less than
+    # macos-latest for this one-shot text scan — previously ran in ~7.5min,
+    # most of which was the macOS runner spin-up, not the grep.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Scan for invisible Unicode
         run: |
           if grep -rP '[\x{E0100}-\x{E01EF}\x{FE00}-\x{FE0F}\x{200B}-\x{200F}\x{2060}-\x{2064}\x{E0000}-\x{E007F}\x{F0000}-\x{10FFFD}]' \
+            --exclude-dir='.build' --exclude-dir='.git' \
             --include='*.swift' --include='*.js' --include='*.py' --include='*.rb' \
             --include='*.yml' --include='*.yaml' --include='*.json' --include='*.md' .; then
             echo "::error::Invisible Unicode characters detected — possible Glassworm payload"
