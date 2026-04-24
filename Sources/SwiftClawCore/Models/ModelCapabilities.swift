@@ -15,10 +15,16 @@ public struct ModelCapabilities: Sendable {
     /// Looks up known capabilities by model ID with simple substring matching.
     /// Returns a default window of 8192 when no match.
     ///
+    /// When `dynamicContextWindow` is provided (e.g. from model auto-detection),
+    /// it takes priority over the static lookup table.
+    ///
     /// Matching is case-insensitive and first-match-wins, ordered from most
     /// specific to least specific. Unknown models fall back to a conservative
     /// 8192-token window.
-    public static func forModel(id: String) -> ModelCapabilities {
+    public static func forModel(id: String, dynamicContextWindow: Int? = nil) -> ModelCapabilities {
+        if let dynamic = dynamicContextWindow {
+            return ModelCapabilities(contextWindow: dynamic)
+        }
         let lowered = id.lowercased()
         for (needle, window) in Self.knownModels where lowered.contains(needle) {
             return ModelCapabilities(contextWindow: window)

@@ -14,11 +14,26 @@ struct GeneralSettingsView: View {
                     }
                 }
 
-                TextField("Model ID", text: $vm.modelId)
+                if viewModel.availableModels.isEmpty {
+                    TextField("Model ID", text: $vm.modelId)
+                } else {
+                    Picker("Model", selection: $vm.modelId) {
+                        ForEach(viewModel.availableModels) { model in
+                            Text(model.id).tag(model.id)
+                        }
+                    }
+                    .onChange(of: viewModel.modelId) { _, newId in
+                        Task { await viewModel.fetchModelInfo(for: newId) }
+                    }
+                }
 
                 if viewModel.backendType == .http {
                     TextField("API URL", text: $vm.httpURL)
                     SecureField("API Key (optional)", text: $vm.httpAPIKey)
+                }
+
+                if let ctx = viewModel.discoveredContextWindow {
+                    LabeledContent("Context Window", value: "\(ctx.formatted()) tokens")
                 }
 
                 Button("Apply & Reload Backend") {
@@ -28,5 +43,6 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .task { await viewModel.discoverModels() }
     }
 }

@@ -119,7 +119,11 @@ private struct SettingsFooter: View {
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
-            .popover(isPresented: $showPopover, arrowEdge: .top) {
+            .popover(
+                isPresented: $showPopover,
+                attachmentAnchor: .point(.trailing),
+                arrowEdge: .trailing
+            ) {
                 QuickSettingsPopover()
                     .environment(viewModel)
             }

@@ -43,6 +43,10 @@ public struct TokenUsage: Sendable, Codable, Equatable {
 /// A single chunk from a streaming LLM generation.
 public struct StreamChunk: Sendable {
     public let text: String?
+    /// Reasoning/thinking content from models that use a dedicated reasoning field
+    /// (e.g. Gemma 4 `reasoning`, DeepSeek-R1). Distinct from `<think>` tag
+    /// detection which is handled by Session's text buffering.
+    public let thinking: String?
     public let toolCalls: [ToolCallRequest]?
     public let finishReason: FinishReason?
     public let tokenUsage: TokenUsage?
@@ -55,11 +59,13 @@ public struct StreamChunk: Sendable {
 
     public init(
         text: String? = nil,
+        thinking: String? = nil,
         toolCalls: [ToolCallRequest]? = nil,
         finishReason: FinishReason? = nil,
         tokenUsage: TokenUsage? = nil
     ) {
         self.text = text
+        self.thinking = thinking
         self.toolCalls = toolCalls
         self.finishReason = finishReason
         self.tokenUsage = tokenUsage

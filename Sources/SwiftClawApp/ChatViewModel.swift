@@ -72,6 +72,18 @@ final class ChatViewModel {
         didSet { UserDefaults.standard.set(maxTokens, forKey: "sc.maxTokens") }
     }
 
+    // MARK: Model discovery
+
+    var availableModels: [DiscoveredModel] = []
+    var selectedModelInfo: ModelInfo?
+    var isDiscoveringModels: Bool = false
+
+    /// Dynamic context window reported by the backend for `modelId`; falls
+    /// back to the static `ModelCapabilities` table when unknown.
+    var discoveredContextWindow: Int? {
+        selectedModelInfo?.contextLength
+    }
+
     // MARK: Adapter settings
 
     var adapters: [AdapterMetadata] = []
@@ -136,6 +148,7 @@ final class ChatViewModel {
             await refreshSessions()
             await refreshFolders()
             await refreshAdapters()
+            await discoverModels()
         }
     }
 
@@ -158,6 +171,7 @@ final class ChatViewModel {
                 }
                 backend = loaded
                 backendState = .ready
+                Task { await discoverModels() }
 
             case .http:
                 guard let url = URL(string: httpURL) else {
@@ -173,6 +187,7 @@ final class ChatViewModel {
                     cacheMode: config.cacheMode
                 )
                 backendState = .ready
+                Task { await discoverModels() }
             }
         } catch {
             backendState = .error(error.localizedDescription)
@@ -525,6 +540,69 @@ final class ChatViewModel {
         adapters = (try? AdapterStore().list()) ?? []
     }
 
+    // MARK: - Model Discovery
+
+    func discoverModels() async {
+        // Coalesce rapid re-triggers (init + loadBackend + two settings `.task`s
+        // can fire in the same window). Skip if a scan is already in flight.
+        guard !isDiscoveringModels else { return }
+        isDiscoveringModels = true
+        defer { isDiscoveringModels = false }
+
+        let service = ModelDiscoveryService()
+        var models: [DiscoveredModel] = []
+
+        switch backendType {
+        case .http:
+            guard let url = URL(string: httpURL) else { return }
+            if let ollamaModels = try? await service.listOllamaModels(baseURL: url) {
+                models = ollamaModels
+            } else if let openAIModels = try? await service.listOpenAIModels(
+                baseURL: url,
+                apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey
+            ) {
+                models = openAIModels
+            }
+
+        case .mlx:
+            let scanner = MLXModelScanner()
+            models = await scanner.listCachedModels()
+        }
+
+        // @Observable fires on every assignment regardless of value — guard so
+        // a no-op scan doesn't re-render the model-list views.
+        if models != availableModels {
+            availableModels = models
+        }
+    }
+
+    func fetchModelInfo(for modelName: String) async {
+        selectedModelInfo = nil
+
+        switch backendType {
+        case .http:
+            guard let url = URL(string: httpURL) else { return }
+            let service = ModelDiscoveryService()
+            if let info = try? await service.getOllamaModelInfo(baseURL: url, model: modelName) {
+                selectedModelInfo = info
+                if let defaultTemp = info.temperature {
+                    temperature = defaultTemp
+                }
+            }
+
+        case .mlx:
+            let scanner = MLXModelScanner()
+            if let info = await scanner.getModelInfo(modelId: modelName) {
+                selectedModelInfo = info
+            }
+        }
+    }
+
+    func selectDiscoveredModel(_ model: DiscoveredModel) async {
+        modelId = model.id
+        await fetchModelInfo(for: model.id)
+    }
+
     // MARK: - Private Helpers
 
     private func makeMemoryStore(config: SwiftClawConfig) -> (any MemoryProvider)? {
@@ -800,7 +878,7 @@ final class ChatViewModel {
     /// falls back to a chars/4 heuristic. `isApproximate` is true in fallback
     /// mode so the indicator can prefix the label with `~`.
     var contextUsage: (used: Int, total: Int, isApproximate: Bool) {
-        let total = ModelCapabilities.forModel(id: modelId).contextWindow
+        let total = ModelCapabilities.forModel(id: modelId, dynamicContextWindow: discoveredContextWindow).contextWindow
         if let usage = lastTokenUsage {
             return (usage.totalTokens, total, false)
         }

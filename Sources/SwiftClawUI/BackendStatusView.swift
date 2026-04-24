@@ -31,6 +31,7 @@ public struct BackendStatusView: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
         .background(.regularMaterial, in: Capsule())
+        .fixedSize()
         .accessibilityLabel("Backend: \(displayText)")
     }
 

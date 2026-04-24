@@ -246,6 +246,10 @@ public actor Session {
                         }
                     }
                 }
+                // Dedicated reasoning field (Gemma 4, DeepSeek-R1) — bypass </think> buffering
+                if let thinking = chunk.thinking, !thinking.isEmpty {
+                    continuation.yield(.thinkingDelta(thinking))
+                }
                 if let tc = chunk.toolCalls { accumulatedToolCalls.append(contentsOf: tc) }
                 if let fr = chunk.finishReason { finishReason = fr }
                 if let tu = chunk.tokenUsage { tokenUsage = tu }

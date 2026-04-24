@@ -1,3 +1,4 @@
+import SwiftClawCore
 import SwiftClawUI
 import SwiftUI
 
@@ -30,6 +31,12 @@ struct ModelSettingsView: View {
                                 .background(Theme.brandGold.opacity(0.12), in: Capsule())
                         }
                     }
+
+                    if let ctx = viewModel.discoveredContextWindow {
+                        Text("Detected context: \(ctx.formatted()) tokens")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -38,6 +45,80 @@ struct ModelSettingsView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(Theme.separatorColor, lineWidth: 1)
                 )
+
+                // Detected Models
+                GroupBox("Detected Models") {
+                    VStack(spacing: 0) {
+                        if viewModel.isDiscoveringModels {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                Text("Scanning for models...")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 8)
+                        } else if viewModel.availableModels.isEmpty {
+                            HStack {
+                                Text("No models detected.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button("Scan") {
+                                    Task { await viewModel.discoverModels() }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 8)
+                        } else {
+                            ForEach(viewModel.availableModels) { model in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(model.id.components(separatedBy: "/").last ?? model.id)
+                                            .font(.subheadline.weight(.medium))
+                                        HStack(spacing: 6) {
+                                            if let size = model.parameterSize {
+                                                Text(size)
+                                                    .font(.caption)
+                                                    .foregroundStyle(Theme.brandGold)
+                                            }
+                                            if let quant = model.quantization {
+                                                Text(quant)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            if let bytes = model.size {
+                                                Text(ByteCountFormatter.string(
+                                                    fromByteCount: bytes, countStyle: .file
+                                                ))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                    }
+                                    Spacer()
+                                    if model.id == viewModel.modelId {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(Theme.brandGold)
+                                    } else {
+                                        Button("Select") {
+                                            Task { await viewModel.selectDiscoveredModel(model) }
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+                                }
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 8)
+                                if model.id != viewModel.availableModels.last?.id {
+                                    Divider().padding(.leading, 8)
+                                }
+                            }
+                        }
+                    }
+                }
 
                 GroupBox("Storage") {
                     VStack(spacing: 0) {
@@ -105,7 +186,10 @@ struct ModelSettingsView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
-        .task { await viewModel.refreshStorageMetrics() }
+        .task {
+            await viewModel.refreshStorageMetrics()
+            await viewModel.discoverModels()
+        }
     }
 
     private func storageRow(label: String, value: String) -> some View {

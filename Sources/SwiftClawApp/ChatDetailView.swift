@@ -122,17 +122,6 @@ struct ChatDetailView: View {
         }
         .animation(.easeInOut(duration: 0.15), value: isNearBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .toolbar {
-            ToolbarItem(placement: .secondaryAction) {
-                let usage = viewModel.contextUsage
-                SCContextUsageIndicator(
-                    used: usage.used,
-                    total: usage.total,
-                    isApproximate: usage.isApproximate,
-                    breakdown: viewModel.contextUsageBreakdown
-                )
-            }
-        }
     }
 }
 

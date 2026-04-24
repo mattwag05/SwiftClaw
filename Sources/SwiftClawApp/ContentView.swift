@@ -24,7 +24,16 @@ struct ContentView: View {
         } detail: {
             ChatDetailView()
                 .toolbar {
-                    ToolbarItem(placement: .automatic) {
+                    ToolbarItemGroup(placement: .automatic) {
+                        let usage = viewModel.contextUsage
+                        SCContextUsageIndicator(
+                            used: usage.used,
+                            total: usage.total,
+                            isApproximate: usage.isApproximate,
+                            breakdown: viewModel.contextUsageBreakdown
+                        )
+                        .fixedSize()
+
                         BackendStatusView(
                             backendType: viewModel.backendType,
                             modelId: viewModel.modelId,
@@ -32,6 +41,7 @@ struct ContentView: View {
                             ramUsage: metrics.formattedRAM,
                             cpuUsage: metrics.formattedCPU
                         )
+                        .fixedSize()
                     }
                     ToolbarItem(placement: .primaryAction) {
                         if viewModel.isGenerating {

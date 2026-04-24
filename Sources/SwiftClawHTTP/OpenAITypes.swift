@@ -172,10 +172,13 @@ struct ChunkChoice: Decodable {
 struct ChunkDelta: Decodable {
     let content: String?
     let toolCalls: [DeltaToolCall]?
+    /// Reasoning/thinking content (Gemma 4, DeepSeek-R1, etc.)
+    let reasoning: String?
 
     enum CodingKeys: String, CodingKey {
         case content
         case toolCalls = "tool_calls"
+        case reasoning
     }
 }
 

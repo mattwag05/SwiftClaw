@@ -14,6 +14,17 @@ public struct HTTPBackend: ModelBackend {
     /// preventing Anthropic-specific content blocks from being sent to Ollama or other servers.
     private let effectiveCacheMode: CacheMode
 
+    /// Dedicated session with generous timeouts for model loading + inference.
+    /// Ollama sends zero SSE events while loading a model into memory, so the
+    /// default 60-second `timeoutIntervalForRequest` on `URLSession.shared`
+    /// can kill the connection before generation even starts.
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 600   // 10 min per-chunk (covers model loading)
+        config.timeoutIntervalForResource = 3600 // 1 hour total
+        return URLSession(configuration: config)
+    }()
+
     /// - Parameters:
     ///   - baseURL: Base URL of the API, e.g. `http://localhost:11434/v1`
     ///   - model: Model identifier sent in the request body
@@ -62,7 +73,7 @@ public struct HTTPBackend: ModelBackend {
         continuation: AsyncThrowingStream<StreamChunk, Error>.Continuation
     ) async throws {
         let request = try buildRequest(messages: messages, tools: tools, config: config)
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let (bytes, response) = try await Self.session.bytes(for: request)
 
         guard let http = response as? HTTPURLResponse else {
             throw SwiftClawError.generationFailed("Unexpected response type")
@@ -107,6 +118,11 @@ public struct HTTPBackend: ModelBackend {
             // Emit text delta
             if let text = choice.delta.content, !text.isEmpty {
                 continuation.yield(StreamChunk(text: text))
+            }
+
+            // Emit reasoning/thinking delta (Gemma 4, DeepSeek-R1, etc.)
+            if let reasoning = choice.delta.reasoning, !reasoning.isEmpty {
+                continuation.yield(StreamChunk(thinking: reasoning))
             }
 
             // Accumulate tool call deltas
@@ -209,7 +225,7 @@ public struct HTTPBackend: ModelBackend {
             topP: config.topP
         )
 
-        var request = URLRequest(url: endpoint, timeoutInterval: 300)
+        var request = URLRequest(url: endpoint, timeoutInterval: 600)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let key = apiKey {
