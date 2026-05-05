@@ -93,10 +93,10 @@ This is the PR 7 / model-picker workstream — ship target is v4.9.
 
 ### 5.1 v4.9 — Model picker & discovery (current sprint)
 
-- [ ] Ship `DiscoveredModel` + scanners (Ollama, OpenAI-compatible, MLX cache).
-- [ ] Model-selection UI in Settings and Quick Settings with size/quant/family badges.
-- [ ] CLI `swiftclaw models list [--backend mlx|http]` parity.
-- [ ] Tests for both scanners (mock HTTP responses; fixture MLX cache dir).
+- [x] Ship `DiscoveredModel` + scanners (Ollama, OpenAI-compatible, MLX cache).
+- [x] Model-selection UI in Settings and Quick Settings with size/quant/family badges.
+- [x] CLI `swiftclaw models list [--backend mlx|http]` parity.
+- [x] Tests for both scanners (mock HTTP responses; fixture MLX cache dir).
 
 ### 5.2 Near-term — P0 (Week 1-2 after v4.9)
 

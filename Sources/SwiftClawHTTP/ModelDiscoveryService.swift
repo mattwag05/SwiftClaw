@@ -3,8 +3,11 @@ import SwiftClawCore
 
 /// Discovers available models from Ollama or OpenAI-compatible APIs.
 public struct ModelDiscoveryService: Sendable {
+    private let session: URLSession
 
-    public init() {}
+    public init(session: URLSession = .shared) {
+        self.session = session
+    }
 
     // MARK: - Ollama
 
@@ -17,7 +20,7 @@ public struct ModelDiscoveryService: Sendable {
         var request = URLRequest(url: tagsURL, timeoutInterval: 10)
         request.httpMethod = "GET"
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw ModelDiscoveryError.requestFailed
         }
@@ -44,7 +47,7 @@ public struct ModelDiscoveryService: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(["name": model])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw ModelDiscoveryError.requestFailed
         }
@@ -68,7 +71,7 @@ public struct ModelDiscoveryService: Sendable {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw ModelDiscoveryError.requestFailed
         }
@@ -95,7 +98,7 @@ public struct ModelDiscoveryService: Sendable {
 
 // MARK: - Error
 
-public enum ModelDiscoveryError: LocalizedError, Sendable {
+public enum ModelDiscoveryError: LocalizedError, Sendable, Equatable {
     case invalidURL
     case requestFailed
     case decodingFailed(String)
@@ -104,24 +107,24 @@ public enum ModelDiscoveryError: LocalizedError, Sendable {
         switch self {
         case .invalidURL: return "Invalid discovery URL"
         case .requestFailed: return "Model discovery request failed"
-        case .decodingFailed(let detail): return "Failed to decode response: \(detail)"
+        case let .decodingFailed(detail): return "Failed to decode response: \(detail)"
         }
     }
 }
 
 // MARK: - Ollama Response Types
 
-struct OllamaTagsResponse: Decodable, Sendable {
+struct OllamaTagsResponse: Decodable {
     let models: [OllamaModel]
 }
 
-struct OllamaModel: Decodable, Sendable {
+struct OllamaModel: Decodable {
     let name: String
     let size: Int64?
     let details: OllamaModelDetails?
 }
 
-struct OllamaModelDetails: Decodable, Sendable {
+struct OllamaModelDetails: Decodable {
     let family: String?
     let parameterSize: String?
     let quantizationLevel: String?
@@ -133,7 +136,7 @@ struct OllamaModelDetails: Decodable, Sendable {
     }
 }
 
-struct OllamaShowResponse: Decodable, Sendable {
+struct OllamaShowResponse: Decodable {
     let parameters: String?
     let template: String?
 
@@ -167,10 +170,10 @@ struct OllamaShowResponse: Decodable, Sendable {
 
 // MARK: - OpenAI Response Types
 
-struct OpenAIModelsResponse: Decodable, Sendable {
+struct OpenAIModelsResponse: Decodable {
     let data: [OpenAIModelEntry]
 }
 
-struct OpenAIModelEntry: Decodable, Sendable {
+struct OpenAIModelEntry: Decodable {
     let id: String
 }

@@ -2,6 +2,28 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [4.9] — 2026-05-04
+
+### Model picker & discovery
+
+**[feature]** `DiscoveredModel.swift` (Core) — `Sendable, Identifiable` descriptor: `id`, `size`, `parameterSize`, `quantization`, `family`, `source` (`ollama` / `openai` / `mlx`).
+
+**[feature]** `ModelDiscoveryService.swift` (HTTP) — `listOllamaModels(baseURL:)` hits Ollama `GET /api/tags` (strips `/v1` suffix automatically); `getOllamaModelInfo(baseURL:model:)` hits `POST /api/show`; `listOpenAIModels(baseURL:apiKey:)` hits `GET /v1/models`. Accepts injectable `URLSession` for testing.
+
+**[feature]** `MLXModelScanner.swift` (MLX) — walks `~/Library/Caches/models/<org>/<model>/` for `config.json`; infers `parameterSize` from `hidden_size × num_hidden_layers` heuristic; extracts `quantization` from model name. Accepts injectable `cacheBase: URL` for testing.
+
+**[feature]** `ModelsCommand.swift` (CLI) — `swiftclaw models list [--backend mlx|http|all] [--api-url …] [--api-key …]`. Auto-selects Ollama vs OpenAI by URL host. Columnar output: `ID`, `SRC`, `PARAMS`, `QUANT`, `SIZE`.
+
+**[feature]** App UI — `ModelSettingsView`, `GeneralSettingsView`, `QuickSettingsPopover`, `BackendStatusView`, `ChatViewModel` surface discovered models with size/quant/family badges.
+
+**[test]** `ModelDiscoveryServiceTests.swift` — 6 tests via `MockURLProtocol` stub: field mapping, missing details, `/v1` stripping, OpenAI id mapping, Bearer header, non-2xx error throw.
+
+**[test]** `MLXModelScannerTests.swift` — 7 tests via fixture cache dir: field inference, quant detection, skipping missing `config.json`, empty/non-existent cache, multi-org discovery, size computation.
+
+**Summary:** 5 features added, 13 new tests, ~295/295 tests passing.
+
+---
+
 ## [4.8] — 2026-04-21
 
 ### Hash-anchored file edits
