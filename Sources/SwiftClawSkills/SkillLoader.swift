@@ -24,7 +24,6 @@ public enum SkillLoader {
 
         let lines = text.components(separatedBy: "\n")
 
-        // Find closing --- fence (starts at index 1 to skip the opening fence)
         var closingIndex: Int?
         for i in 1 ..< lines.count {
             if lines[i].trimmingCharacters(in: .whitespaces) == "---" {
@@ -36,7 +35,6 @@ public enum SkillLoader {
             throw SkillError.missingFrontmatter
         }
 
-        // Parse key: value lines within the frontmatter block
         var fields: [String: String] = [:]
         var triggers: [String] = []
         for line in lines[1 ..< closing] {
@@ -59,10 +57,8 @@ public enum SkillLoader {
             throw SkillError.missingField("description")
         }
 
-        // Body is everything after the closing fence line
         let bodyLines = Array(lines[(closing + 1)...])
         var body = bodyLines.joined(separator: "\n")
-        // Trim a single leading newline that separates fence from content
         if body.hasPrefix("\n") { body = String(body.dropFirst()) }
 
         return ParsedSkill(name: name, description: description, triggers: triggers, body: body)

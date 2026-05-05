@@ -34,14 +34,12 @@ public actor SkillStore {
 
     private func loadAll() -> [Skill] {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: directory.path),
-              let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        guard let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         else { return [] }
 
         var skills: [Skill] = []
         for entry in entries {
             let skillFile = entry.appendingPathComponent("SKILL.md")
-            guard fm.fileExists(atPath: skillFile.path) else { continue }
             do {
                 let parsed = try SkillLoader.parse(contentsOf: skillFile)
                 skills.append(Skill(

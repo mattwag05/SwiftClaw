@@ -220,13 +220,7 @@ final class ChatViewModel {
         file operations (sandboxed), environment inspection, and optionally pippin CLI wrappers \
         for Apple Mail and Voice Memos. Be concise and accurate.
         """
-        if config.skillsEnabled {
-            let dirURL = config.skillsDirectory.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
-            let skillStore = SkillStore(directory: dirURL)
-            let skillList = await skillStore.list()
-            tools += SkillToolFactory.allTools(store: skillStore)
-            if let section = SkillPromptSection.build(skills: skillList) { basePrompt += section }
-        }
+        await applySkills(config: config, tools: &tools, prompt: &basePrompt)
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
             systemPrompt: basePrompt,
@@ -384,13 +378,7 @@ final class ChatViewModel {
                 tools += MemoryToolFactory.allTools(store: memStore)
             }
             var basePrompt = "You are Sysop, a macOS assistant."
-            if config.skillsEnabled {
-                let dirURL = config.skillsDirectory.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
-                let skillStore = SkillStore(directory: dirURL)
-                let skillList = await skillStore.list()
-                tools += SkillToolFactory.allTools(store: skillStore)
-                if let section = SkillPromptSection.build(skills: skillList) { basePrompt += section }
-            }
+            await applySkills(config: config, tools: &tools, prompt: &basePrompt)
             let agentConfig = AgentConfiguration(
                 name: restored.metadata.agentName,
                 systemPrompt: basePrompt,
@@ -621,6 +609,15 @@ final class ChatViewModel {
     }
 
     // MARK: - Private Helpers
+
+    private func applySkills(config: SwiftClawConfig, tools: inout [any SwiftClawTool], prompt: inout String) async {
+        guard config.skillsEnabled else { return }
+        let dirURL = config.skillsDirectory.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+        let store = SkillStore(directory: dirURL)
+        let skillList = await store.list()
+        tools += SkillToolFactory.allTools(store: store)
+        if let section = SkillPromptSection.build(skills: skillList) { prompt += section }
+    }
 
     private func makeMemoryStore(config: SwiftClawConfig) -> (any MemoryProvider)? {
         if backendType == .mlx {
