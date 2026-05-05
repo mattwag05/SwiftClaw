@@ -3,15 +3,26 @@ import SwiftClawCore
 
 /// Discovers MLX models cached on the local filesystem.
 public struct MLXModelScanner: Sendable {
-    public init() {}
+    let cacheBase: URL?
+
+    public init(cacheBase: URL? = nil) {
+        self.cacheBase = cacheBase
+    }
 
     /// Scans `~/Library/Caches/models/` for downloaded model directories.
     /// Each subdirectory containing a `config.json` is treated as a valid model.
     public func listCachedModels() async -> [DiscoveredModel] {
-        await Task.detached(priority: .userInitiated) {
+        let injectedBase = cacheBase
+        return await Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
-            guard let cacheBase = fm.urls(for: .cachesDirectory, in: .userDomainMask)
-                .first?.appendingPathComponent("models") else { return [] }
+            let cacheBase: URL
+            if let base = injectedBase {
+                cacheBase = base
+            } else {
+                guard let computed = fm.urls(for: .cachesDirectory, in: .userDomainMask)
+                    .first?.appendingPathComponent("models") else { return [] }
+                cacheBase = computed
+            }
 
             guard let orgDirs = try? fm.contentsOfDirectory(
                 at: cacheBase, includingPropertiesForKeys: [.isDirectoryKey]
@@ -56,12 +67,19 @@ public struct MLXModelScanner: Sendable {
 
     /// Reads config.json for a specific cached model to extract detailed info.
     public func getModelInfo(modelId: String) async -> ModelInfo? {
-        await Task.detached(priority: .userInitiated) {
+        let injectedBase = cacheBase
+        return await Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
-            guard let cacheBase = fm.urls(for: .cachesDirectory, in: .userDomainMask)
-                .first?.appendingPathComponent("models") else { return nil }
+            let resolvedBase: URL
+            if let base = injectedBase {
+                resolvedBase = base
+            } else {
+                guard let computed = fm.urls(for: .cachesDirectory, in: .userDomainMask)
+                    .first?.appendingPathComponent("models") else { return nil }
+                resolvedBase = computed
+            }
 
-            let configURL = cacheBase.appendingPathComponent(modelId)
+            let configURL = resolvedBase.appendingPathComponent(modelId)
                 .appendingPathComponent("config.json")
             guard let data = try? Data(contentsOf: configURL),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
