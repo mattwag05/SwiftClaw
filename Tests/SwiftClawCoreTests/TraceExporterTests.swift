@@ -1,10 +1,9 @@
-import Testing
 import Foundation
 @testable import SwiftClawCore
+import Testing
 
 @Suite("TraceExporter")
 struct TraceExporterTests {
-
     // MARK: - Helpers
 
     private func decode(_ data: Data) throws -> [String: Any] {
@@ -23,7 +22,7 @@ struct TraceExporterTests {
         let msgs: [Message] = [
             Message(role: .system, content: "You are a helpful assistant."),
             Message(role: .user, content: "Hello"),
-            Message(role: .assistant, content: "Hi there!")
+            Message(role: .assistant, content: "Hi there!"),
         ]
         let data = try TraceExporter.exportLine(messages: msgs)
         let parsed = try messages(data)
@@ -41,7 +40,7 @@ struct TraceExporterTests {
     func toolCallMapping() throws {
         let call = ToolCallRequest(id: "call-1", name: "get_weather", arguments: "{\"city\":\"NYC\"}")
         let msgs: [Message] = [
-            Message(role: .assistant, content: "", toolCalls: [call])
+            Message(role: .assistant, content: "", toolCalls: [call]),
         ]
         let data = try TraceExporter.exportLine(messages: msgs)
         let parsed = try messages(data)
@@ -52,12 +51,12 @@ struct TraceExporterTests {
         // content should be null (NSNull) when empty and tool calls present
         #expect(assistantMsg["content"] is NSNull)
 
-        let toolCalls = assistantMsg["tool_calls"] as! [[String: Any]]
+        let toolCalls = try #require(assistantMsg["tool_calls"] as? [[String: Any]])
         #expect(toolCalls.count == 1)
         #expect(toolCalls[0]["id"] as? String == "call-1")
         #expect(toolCalls[0]["type"] as? String == "function")
 
-        let fn = toolCalls[0]["function"] as! [String: Any]
+        let fn = try #require(toolCalls[0]["function"] as? [String: Any])
         #expect(fn["name"] as? String == "get_weather")
         #expect(fn["arguments"] as? String == "{\"city\":\"NYC\"}")
     }
@@ -67,7 +66,7 @@ struct TraceExporterTests {
     @Test("Tool message maps to tool_call_id")
     func toolResultMapping() throws {
         let msgs: [Message] = [
-            Message(role: .tool, content: "Sunny, 72°F", toolCallId: "call-1")
+            Message(role: .tool, content: "Sunny, 72°F", toolCallId: "call-1"),
         ]
         let data = try TraceExporter.exportLine(messages: msgs)
         let parsed = try messages(data)
@@ -83,21 +82,21 @@ struct TraceExporterTests {
     func multiSessionExport() throws {
         let session1: [Message] = [
             Message(role: .user, content: "What's 2+2?"),
-            Message(role: .assistant, content: "4")
+            Message(role: .assistant, content: "4"),
         ]
         let session2: [Message] = [
             Message(role: .user, content: "What's the capital of France?"),
-            Message(role: .assistant, content: "Paris")
+            Message(role: .assistant, content: "Paris"),
         ]
         let data = try TraceExporter.exportAll([session1, session2])
-        let text = String(data: data, encoding: .utf8)!
+        let text = try #require(String(data: data, encoding: .utf8))
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
         #expect(lines.count == 2)
 
         // Each line is valid JSON with a "messages" key
         for line in lines {
-            let lineData = line.data(using: .utf8)!
-            let obj = try JSONSerialization.jsonObject(with: lineData) as! [String: Any]
+            let lineData = try #require(line.data(using: .utf8))
+            let obj = try #require(JSONSerialization.jsonObject(with: lineData) as? [String: Any])
             #expect(obj["messages"] != nil)
         }
     }
@@ -120,5 +119,47 @@ struct TraceExporterTests {
         let data = try TraceExporter.exportLine(messages: [msg])
         let parsed = try messages(data)
         #expect(parsed[0]["content"] as? String == "Calling foo...")
+    }
+
+    // MARK: - Credential proxy
+
+    @Test("Tool message content is redacted when proxy is active")
+    func toolMessageRedacted() throws {
+        let awsKey = "AKIAIOSFODNN7EXAMPLE"
+        let msgs: [Message] = [
+            Message(role: .tool, content: "key=\(awsKey)", toolCallId: "c1"),
+        ]
+        let data = try TraceExporter.exportLine(messages: msgs, proxy: RegexCredentialProxy())
+        let parsed = try messages(data)
+        let content = parsed[0]["content"] as? String ?? ""
+        #expect(content.contains("[REDACTED:aws_key]"))
+        #expect(!content.contains(awsKey))
+    }
+
+    @Test("Assistant tool_calls arguments are redacted when proxy is active")
+    func toolCallArgumentsRedacted() throws {
+        let token = "ghp_" + String(repeating: "X", count: 36)
+        let call = ToolCallRequest(id: "c2", name: "shell", arguments: "{\"command\":\"echo \(token)\"}")
+        let msgs: [Message] = [
+            Message(role: .assistant, content: "", toolCalls: [call]),
+        ]
+        let data = try TraceExporter.exportLine(messages: msgs, proxy: RegexCredentialProxy())
+        let parsed = try messages(data)
+        let toolCalls = try #require(parsed[0]["tool_calls"] as? [[String: Any]])
+        let fn = try #require(toolCalls[0]["function"] as? [String: Any])
+        let args = fn["arguments"] as? String ?? ""
+        #expect(args.contains("[REDACTED:github]"))
+        #expect(!args.contains(token))
+    }
+
+    @Test("NoOp proxy leaves export content unchanged")
+    func noOpProxyExport() throws {
+        let awsKey = "AKIAIOSFODNN7EXAMPLE"
+        let msgs: [Message] = [
+            Message(role: .tool, content: "key=\(awsKey)", toolCallId: "c1"),
+        ]
+        let data = try TraceExporter.exportLine(messages: msgs, proxy: NoOpCredentialProxy())
+        let parsed = try messages(data)
+        #expect((parsed[0]["content"] as? String ?? "").contains(awsKey))
     }
 }

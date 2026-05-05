@@ -85,6 +85,9 @@ struct SessionsCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Skip sessions with fewer than N messages.")
         var minMessages: Int?
 
+        @Flag(name: [.customLong("no-credential-proxy")], help: "Export raw session content without redaction.")
+        var noCredentialProxy: Bool = false
+
         mutating func run() async throws {
             let store = try FileSessionStore()
             var batches: [[Message]] = []
@@ -111,7 +114,8 @@ struct SessionsCommand: AsyncParsableCommand {
                 batches.append(messages)
             }
 
-            let data = try TraceExporter.exportAll(batches)
+            let config = (try? SwiftClawConfig.load()) ?? .default
+            let data = try TraceExporter.exportAll(batches, proxy: config.makeCredentialProxy(disableProxy: noCredentialProxy))
 
             if let path = output {
                 let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)

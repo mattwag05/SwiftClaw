@@ -1,7 +1,7 @@
 # SwiftClaw — Product Requirements Document
 
-**Version:** 4.8.0
-**Last updated:** 2026-04-24
+**Version:** 5.1.0
+**Last updated:** 2026-05-04
 **Owner:** @mattwag05
 **Repo:** https://github.com/mattwag05/SwiftClaw
 
@@ -81,27 +81,19 @@ SwiftClaw is a **macOS-first, Swift-native AI agent framework** that runs fully 
 - Unicode safety scan + CodeQL workflow.
 - 280/280 tests passing across 6 test targets (`SwiftClawCoreTests`, `SwiftClawHTTPTests`, `SwiftClawMemoryTests`, `SwiftClawMLXTests`, `SwiftClawPippinTests`, `SwiftClawToolsTests`), plus new `SwiftClawUITests` target covering `SessionGrouper`.
 
-### 4.2 In-Flight (uncommitted on current branch)
-
-- **Model discovery service.** `SwiftClawCore/Models/DiscoveredModel.swift` defines a `Sendable, Identifiable` descriptor (id, size, parameter size, quantization, family, source ∈ `{ollama, openai, mlx}`). `SwiftClawHTTP/ModelDiscoveryService.swift` enumerates running HTTP backends; `SwiftClawMLX/MLXModelScanner.swift` scans the local MLX cache.
-- **App settings integration.** `ModelSettingsView`, `GeneralSettingsView`, `QuickSettingsPopover`, `ChatViewModel`, and `BackendStatusView` updated to surface discovered models (pick a model from a real list instead of typing a string).
-- **Backend capabilities surface.** `ModelCapabilities.swift` + `StreamChunk.swift` tweaks thread capability info through to the UI.
-
-This is the PR 7 / model-picker workstream — ship target is v4.9.
-
 ## 5. Release Plan
 
-### 5.1 v4.9 — Model picker & discovery (current sprint)
+### 5.1 v4.9 — Model picker & discovery ✓
 
 - [x] Ship `DiscoveredModel` + scanners (Ollama, OpenAI-compatible, MLX cache).
 - [x] Model-selection UI in Settings and Quick Settings with size/quant/family badges.
 - [x] CLI `swiftclaw models list [--backend mlx|http]` parity.
 - [x] Tests for both scanners (mock HTTP responses; fixture MLX cache dir).
 
-### 5.2 Near-term — P0 (Week 1-2 after v4.9)
+### 5.2 Near-term — P0 (Week 1-2 after v4.9) ✓
 
-- **Lazy skill loading.** Send skill summaries first; fetch full content on demand to shrink base prompt.
-- **Credential proxy.** Intercept secrets before tool execution; prevent key leakage into LoRA training data / session logs.
+- [x] **Lazy skill loading.** `SwiftClawSkills` module — summaries injected at session start; full body fetched on demand via `skill_load` tool.
+- [x] **Credential proxy.** `RegexCredentialProxy` hooks into `ToolRegistry.execute` (args + result) and `TraceExporter.exportAll`. Patterns: AWS, GitHub PAT, Anthropic, OpenAI, Stripe, Slack, JWT, PEM. Config-driven (`credentialProxyEnabled`, `credentialProxyExtraPatterns`); `--no-credential-proxy` CLI flag for debugging.
 
 ### 5.3 Short-term — P1 (Month 1)
 

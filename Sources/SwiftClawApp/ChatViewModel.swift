@@ -226,7 +226,8 @@ final class ChatViewModel {
             systemPrompt: basePrompt,
             tools: tools,
             modelId: modelId,
-            generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)
+            generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens),
+            credentialProxy: config.makeCredentialProxy()
         )
         let agent = Agent(configuration: agentConfig)
         var sessionConfig = SessionConfiguration()
@@ -384,7 +385,8 @@ final class ChatViewModel {
                 systemPrompt: basePrompt,
                 tools: tools,
                 modelId: restored.metadata.modelId,
-                generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)
+                generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens),
+                credentialProxy: config.makeCredentialProxy()
             )
             let agent = Agent(configuration: agentConfig)
             var sessionConfig = SessionConfiguration()

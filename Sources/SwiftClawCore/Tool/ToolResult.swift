@@ -15,4 +15,8 @@ public struct ToolResult: Sendable, Codable {
     public static func failure(_ message: String) -> ToolResult {
         ToolResult(content: message, isError: true)
     }
+
+    public func scrubbed(with proxy: any CredentialProxy) -> ToolResult {
+        ToolResult(content: proxy.scrub(content), isError: isError)
+    }
 }

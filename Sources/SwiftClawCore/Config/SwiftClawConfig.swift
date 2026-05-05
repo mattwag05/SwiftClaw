@@ -13,6 +13,8 @@ public struct SwiftClawConfig: Sendable, Codable {
     public var cacheMode: CacheMode
     public var skillsEnabled: Bool
     public var skillsDirectory: String?
+    public var credentialProxyEnabled: Bool
+    public var credentialProxyExtraPatterns: [String]
 
     public static let `default` = SwiftClawConfig(
         fileSandbox: .default,
@@ -25,7 +27,9 @@ public struct SwiftClawConfig: Sendable, Codable {
         compressionTokenThreshold: nil,
         cacheMode: .none,
         skillsEnabled: false,
-        skillsDirectory: nil
+        skillsDirectory: nil,
+        credentialProxyEnabled: true,
+        credentialProxyExtraPatterns: []
     )
 
     public init(
@@ -39,7 +43,9 @@ public struct SwiftClawConfig: Sendable, Codable {
         compressionTokenThreshold: Int? = nil,
         cacheMode: CacheMode = .none,
         skillsEnabled: Bool = false,
-        skillsDirectory: String? = nil
+        skillsDirectory: String? = nil,
+        credentialProxyEnabled: Bool = true,
+        credentialProxyExtraPatterns: [String] = []
     ) {
         self.fileSandbox = fileSandbox
         self.embeddingModelId = embeddingModelId
@@ -52,6 +58,8 @@ public struct SwiftClawConfig: Sendable, Codable {
         self.cacheMode = cacheMode
         self.skillsEnabled = skillsEnabled
         self.skillsDirectory = skillsDirectory
+        self.credentialProxyEnabled = credentialProxyEnabled
+        self.credentialProxyExtraPatterns = credentialProxyExtraPatterns
     }
 
     /// Custom Codable init for backward compatibility — old JSON without new fields decodes cleanly.
@@ -67,6 +75,8 @@ public struct SwiftClawConfig: Sendable, Codable {
         case cacheMode
         case skillsEnabled
         case skillsDirectory
+        case credentialProxyEnabled
+        case credentialProxyExtraPatterns
     }
 
     public init(from decoder: Decoder) throws {
@@ -82,6 +92,16 @@ public struct SwiftClawConfig: Sendable, Codable {
         cacheMode = try c.decodeIfPresent(CacheMode.self, forKey: .cacheMode) ?? .none
         skillsEnabled = try c.decodeIfPresent(Bool.self, forKey: .skillsEnabled) ?? false
         skillsDirectory = try c.decodeIfPresent(String.self, forKey: .skillsDirectory)
+        credentialProxyEnabled = try c.decodeIfPresent(Bool.self, forKey: .credentialProxyEnabled) ?? true
+        credentialProxyExtraPatterns = try c.decodeIfPresent([String].self, forKey: .credentialProxyExtraPatterns) ?? []
+    }
+
+    /// Builds a `CredentialProxy` from config. Pass `disableProxy: true` for CLI `--no-credential-proxy`.
+    public func makeCredentialProxy(disableProxy: Bool = false) -> any CredentialProxy {
+        guard !disableProxy, credentialProxyEnabled else { return NoOpCredentialProxy() }
+        return RegexCredentialProxy(
+            extraPatterns: credentialProxyExtraPatterns.map { (RegexCredentialProxy.customLabel, $0) }
+        )
     }
 
     /// Loads config from ~/.swiftclaw/config.json. Returns `.default` if the file doesn't exist.

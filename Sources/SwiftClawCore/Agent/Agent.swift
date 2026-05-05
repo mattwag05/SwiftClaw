@@ -8,6 +8,6 @@ public struct Agent: Sendable {
 
     public init(configuration: AgentConfiguration) {
         self.configuration = configuration
-        self.toolRegistry = ToolRegistry(tools: configuration.tools)
+        toolRegistry = ToolRegistry(tools: configuration.tools, proxy: configuration.credentialProxy)
     }
 }

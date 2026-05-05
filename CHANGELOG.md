@@ -2,6 +2,36 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [5.1] — 2026-05-04
+
+### Credential Proxy
+
+**[security]** `CredentialProxy` protocol (`Sources/SwiftClawCore/Security/CredentialProxy.swift`) — `NoOpCredentialProxy` (passthrough) and `RegexCredentialProxy` (redacts well-known secret shapes). Built-in patterns: AWS access key IDs (`AKIA…`), GitHub PATs (`ghp_/gho_/ghs_/ghu_/ghr_`), Anthropic keys (`sk-ant-…`), OpenAI keys (`sk-…`), Stripe keys (`sk_live_/sk_test_…`), Slack tokens (`xox[abprs]-…`), JWTs (three-segment `eyJ…`), PEM private-key blocks. Each match replaced with `[REDACTED:<family>]`. Accepts `extraPatterns: [(label, pattern)]` for user-defined additions.
+
+**[security]** `ToolRegistry` — accepts `proxy: any CredentialProxy` (default `NoOpCredentialProxy()`). Scrubs tool call **arguments** before `tool.execute` and tool result **content** after, so the redacted string is the only copy that ever enters the message history (sessions, next LLM prompt, and training export all derive from messages).
+
+**[security]** `AgentConfiguration` — new `credentialProxy: any CredentialProxy` field (default `NoOpCredentialProxy()`); passed through to `ToolRegistry` at `Agent.init`.
+
+**[security]** `TraceExporter.exportAll` and `exportLine` — accept optional `proxy` parameter; scrub `Message.content` and `ToolCallRequest.arguments` before encoding ChatML. Defense-in-depth for the highest-risk sink (LoRA training JSONL).
+
+**[feature]** `SwiftClawConfig` — two new backward-compatible fields: `credentialProxyEnabled: Bool` (default `true`), `credentialProxyExtraPatterns: [String]` (default `[]`). Old `config.json` files decode cleanly.
+
+**[feature]** CLI `run` — credential proxy active by default (reads config); `--no-credential-proxy` flag disables for debugging.
+
+**[feature]** CLI `sessions export` — proxy applied to JSONL output by default; `--no-credential-proxy` flag for raw export.
+
+**[feature]** `ChatViewModel` — both `newChat()` and `selectSession()` build and inject the proxy from config.
+
+**[test]** `CredentialProxyTests` — 12 tests: each built-in pattern family (positive + negative-control), multi-secret string, custom extra pattern, `NoOpCredentialProxy` passthrough.
+
+**[test]** `ToolRegistryProxyTests` — 5 tests: result redaction, argument redaction (args scrubbed before tool sees them), no-op passthrough, default-init regression guard, unknown-tool error path.
+
+**[test]** `TraceExporterTests` — 3 new tests: tool message content redacted in JSONL export, assistant `tool_calls.arguments` redacted, no-op proxy leaves content unchanged.
+
+**Summary:** 1 new type, 8 features/security hardening changes, 20 new tests, 376/376 tests passing.
+
+---
+
 ## [5.0] — 2026-05-04
 
 ### Lazy skill loading
