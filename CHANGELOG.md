@@ -2,6 +2,28 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [5.0] — 2026-05-04
+
+### Lazy skill loading
+
+**[feature]** `SwiftClawSkills` — new SPM library target. `Skill` (metadata struct), `SkillStore` (actor — lazily scans `~/.swiftclaw/skills/*/SKILL.md` on first access, caches results), `SkillLoader` (hand-rolled agentskills.io YAML frontmatter parser; `name` + `description` required, `triggers` optional), `SkillLoadTool` (fetches full markdown body on demand), `SkillPromptSection` (builds `## Available Skills` system-prompt appendix).
+
+**[feature]** `SwiftClawConfig` — two new backward-compatible fields: `skillsEnabled: Bool` (default `false`), `skillsDirectory: String?` (default `~/.swiftclaw/skills`). Old `config.json` files decode cleanly via `decodeIfPresent`.
+
+**[feature]** `RunCommand` — `--skills` flag enables skill loading; resolves `skillsDirectory` from config; appends skill summaries to system prompt and registers `skill_load` tool.
+
+**[feature]** `SkillsCommand` — `swiftclaw skills list [--directory …]` and `swiftclaw skills show <name> [--directory …]` CLI subcommands.
+
+**[feature]** `ChatViewModel` — both `newChat()` and `selectSession()` read `config.skillsEnabled` and inject skill summaries + tool when enabled.
+
+**[quality]** Removed iCloud duplicate files (`ModelsCommand 2.swift`, `MLXModelScannerTests 2.swift`, `ModelDiscoveryServiceTests 2.swift`) that caused spurious linker errors.
+
+**[test]** `SwiftClawSkillsTests` — 20 tests across `SkillLoaderTests` (frontmatter parsing, error cases, list parsing), `SkillStoreTests` (lazy load, caching, missing dir, malformed skill tolerance), `SkillPromptSectionTests` (nil on empty, content coverage, prompt append).
+
+**Summary:** 1 new module, 6 features added, 20 new tests, 355/355 tests passing.
+
+---
+
 ## [4.9] — 2026-05-04
 
 ### Model picker & discovery

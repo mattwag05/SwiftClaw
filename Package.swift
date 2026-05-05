@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "SwiftClawPippin", targets: ["SwiftClawPippin"]),
         .library(name: "SwiftClawUI", targets: ["SwiftClawUI"]),
         .library(name: "SwiftClawMemory", targets: ["SwiftClawMemory"]),
+        .library(name: "SwiftClawSkills", targets: ["SwiftClawSkills"]),
         .executable(name: "swiftclaw", targets: ["swiftclaw"]),
         .executable(name: "SwiftClawApp", targets: ["SwiftClawApp"]),
     ],
@@ -40,14 +41,15 @@ let package = Package(
             "SwiftClawCore",
             .product(name: "GRDB", package: "GRDB.swift"),
         ]),
+        .target(name: "SwiftClawSkills", dependencies: ["SwiftClawCore"]),
         .executableTarget(name: "swiftclaw", dependencies: [
             "SwiftClawCore", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools", "SwiftClawPippin",
-            "SwiftClawMemory",
+            "SwiftClawMemory", "SwiftClawSkills",
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
         ]),
         .executableTarget(name: "SwiftClawApp", dependencies: [
             "SwiftClawCore", "SwiftClawUI", "SwiftClawMLX", "SwiftClawHTTP", "SwiftClawTools", "SwiftClawPippin",
-            "SwiftClawMemory",
+            "SwiftClawMemory", "SwiftClawSkills",
         ]),
         .testTarget(name: "SwiftClawCoreTests", dependencies: ["SwiftClawCore"]),
         .testTarget(name: "SwiftClawHTTPTests", dependencies: ["SwiftClawHTTP"]),
@@ -55,6 +57,7 @@ let package = Package(
         .testTarget(name: "SwiftClawMLXTests", dependencies: ["SwiftClawMLX"]),
         .testTarget(name: "SwiftClawPippinTests", dependencies: ["SwiftClawPippin"]),
         .testTarget(name: "SwiftClawMemoryTests", dependencies: ["SwiftClawMemory"]),
+        .testTarget(name: "SwiftClawSkillsTests", dependencies: ["SwiftClawSkills"]),
         .testTarget(name: "SwiftClawUITests", dependencies: ["SwiftClawUI"]),
     ]
 )

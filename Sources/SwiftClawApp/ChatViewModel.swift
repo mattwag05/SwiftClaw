@@ -6,6 +6,7 @@ import SwiftClawHTTP
 import SwiftClawMemory
 import SwiftClawMLX
 import SwiftClawPippin
+import SwiftClawSkills
 import SwiftClawTools
 import SwiftClawUI
 import SwiftUI
@@ -214,13 +215,21 @@ final class ChatViewModel {
         if let memStore = agentMemory {
             tools += MemoryToolFactory.allTools(store: memStore)
         }
+        var basePrompt = """
+        You are Sysop, a macOS assistant. You have access to tools for system administration, \
+        file operations (sandboxed), environment inspection, and optionally pippin CLI wrappers \
+        for Apple Mail and Voice Memos. Be concise and accurate.
+        """
+        if config.skillsEnabled {
+            let dirURL = config.skillsDirectory.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+            let skillStore = SkillStore(directory: dirURL)
+            let skillList = await skillStore.list()
+            tools += SkillToolFactory.allTools(store: skillStore)
+            if let section = SkillPromptSection.build(skills: skillList) { basePrompt += section }
+        }
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
-            systemPrompt: """
-            You are Sysop, a macOS assistant. You have access to tools for system administration, \
-            file operations (sandboxed), environment inspection, and optionally pippin CLI wrappers \
-            for Apple Mail and Voice Memos. Be concise and accurate.
-            """,
+            systemPrompt: basePrompt,
             tools: tools,
             modelId: modelId,
             generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)
@@ -374,9 +383,17 @@ final class ChatViewModel {
             if let memStore = agentMemory {
                 tools += MemoryToolFactory.allTools(store: memStore)
             }
+            var basePrompt = "You are Sysop, a macOS assistant."
+            if config.skillsEnabled {
+                let dirURL = config.skillsDirectory.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+                let skillStore = SkillStore(directory: dirURL)
+                let skillList = await skillStore.list()
+                tools += SkillToolFactory.allTools(store: skillStore)
+                if let section = SkillPromptSection.build(skills: skillList) { basePrompt += section }
+            }
             let agentConfig = AgentConfiguration(
                 name: restored.metadata.agentName,
-                systemPrompt: "You are Sysop, a macOS assistant.",
+                systemPrompt: basePrompt,
                 tools: tools,
                 modelId: restored.metadata.modelId,
                 generationConfig: GenerationConfig(temperature: Float(temperature), maxTokens: maxTokens)

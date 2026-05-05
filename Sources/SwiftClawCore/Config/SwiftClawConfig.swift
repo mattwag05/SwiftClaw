@@ -11,6 +11,8 @@ public struct SwiftClawConfig: Sendable, Codable {
     public var consolidationInterval: Int
     public var compressionTokenThreshold: Int?
     public var cacheMode: CacheMode
+    public var skillsEnabled: Bool
+    public var skillsDirectory: String?
 
     public static let `default` = SwiftClawConfig(
         fileSandbox: .default,
@@ -21,7 +23,9 @@ public struct SwiftClawConfig: Sendable, Codable {
         memoryEnabled: false,
         consolidationInterval: 3,
         compressionTokenThreshold: nil,
-        cacheMode: .none
+        cacheMode: .none,
+        skillsEnabled: false,
+        skillsDirectory: nil
     )
 
     public init(
@@ -33,7 +37,9 @@ public struct SwiftClawConfig: Sendable, Codable {
         memoryEnabled: Bool = false,
         consolidationInterval: Int = 3,
         compressionTokenThreshold: Int? = nil,
-        cacheMode: CacheMode = .none
+        cacheMode: CacheMode = .none,
+        skillsEnabled: Bool = false,
+        skillsDirectory: String? = nil
     ) {
         self.fileSandbox = fileSandbox
         self.embeddingModelId = embeddingModelId
@@ -44,9 +50,11 @@ public struct SwiftClawConfig: Sendable, Codable {
         self.consolidationInterval = consolidationInterval
         self.compressionTokenThreshold = compressionTokenThreshold
         self.cacheMode = cacheMode
+        self.skillsEnabled = skillsEnabled
+        self.skillsDirectory = skillsDirectory
     }
 
-    // Custom Codable init for backward compatibility — old JSON without new fields decodes cleanly.
+    /// Custom Codable init for backward compatibility — old JSON without new fields decodes cleanly.
     enum CodingKeys: String, CodingKey {
         case fileSandbox
         case embeddingModelId
@@ -57,6 +65,8 @@ public struct SwiftClawConfig: Sendable, Codable {
         case consolidationInterval
         case compressionTokenThreshold
         case cacheMode
+        case skillsEnabled
+        case skillsDirectory
     }
 
     public init(from decoder: Decoder) throws {
@@ -70,6 +80,8 @@ public struct SwiftClawConfig: Sendable, Codable {
         consolidationInterval = try c.decodeIfPresent(Int.self, forKey: .consolidationInterval) ?? 3
         compressionTokenThreshold = try c.decodeIfPresent(Int.self, forKey: .compressionTokenThreshold)
         cacheMode = try c.decodeIfPresent(CacheMode.self, forKey: .cacheMode) ?? .none
+        skillsEnabled = try c.decodeIfPresent(Bool.self, forKey: .skillsEnabled) ?? false
+        skillsDirectory = try c.decodeIfPresent(String.self, forKey: .skillsDirectory)
     }
 
     /// Loads config from ~/.swiftclaw/config.json. Returns `.default` if the file doesn't exist.

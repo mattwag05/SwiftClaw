@@ -219,11 +219,11 @@ struct GreetTool: SwiftClawTool {
 swift test
 ```
 
-249 tests across 6 test targets. Core tests use a `MockBackend` — no model download needed.
+355 tests across 7 test targets. Core tests use a `MockBackend` — no model download needed.
 
 ## Roadmap
 
-- **v4.8** (current): Hash-anchored file edits — `read_file` emits per-line content hashes on demand; `edit_file` accepts an `anchor_line`/`anchor_hash` pair and rejects stale edits before applying
+- **v5.0** (current): Lazy skill loading — agentskills.io format (`~/.swiftclaw/skills/*/SKILL.md`); summaries injected into system prompt; full bodies fetched on demand via `skill_load` tool; `swiftclaw skills list/show` CLI
 
 **Near-term (P0 — Week 1-2):**
 - ~~Prompt caching for HTTP backend (stable system prompt + user-injected skills → 50%+ API cost reduction)~~
@@ -234,7 +234,7 @@ swift test
 - ~~Two-layer memory: wire `AgentMemory` into the session loop with MEMORY.md consolidation (nanobot/hermes pattern)~~
 - ~~Token counting for HTTP backend (cost visibility and limit warnings)~~
 - ~~Hash-anchored file edits — line-hash tagging makes `write_file`/`edit` stale-safe on large files~~
-- Lazy skill loading — send skill summaries first; fetch full content on demand
+- ~~Lazy skill loading — send skill summaries first; fetch full content on demand~~
 - Credential proxy — secrets intercepted before tool execution; prevents key leakage into LoRA training data
 - Apple Container sandbox for `shell` tool (macOS 26 native, replaces `FileSandbox`)
 - Per-conversation FIFO queue (prevents concurrent session corruption)
@@ -254,7 +254,7 @@ swift test
 - 3-tier context assembly (recent messages + retrieved memories + agent CLAUDE.md)
 - GrimClaw ↔ SwiftClaw HTTP bridge (Pi agent delegates macOS tasks to SwiftClaw)
 - A2UI Canvas (agent-generated SwiftUI views in the app canvas panel)
-- agentskills.io standard migration (YAML frontmatter + markdown skills for ecosystem compatibility)
+- agentskills.io ecosystem publishing (share skills across agents via a registry)
 
 ## License
 

@@ -2,9 +2,10 @@ import ArgumentParser
 import Foundation
 import SwiftClawCore
 import SwiftClawHTTP
-import SwiftClawMLX
 import SwiftClawMemory
+import SwiftClawMLX
 import SwiftClawPippin
+import SwiftClawSkills
 import SwiftClawTools
 
 struct RunCommand: AsyncParsableCommand {
@@ -47,6 +48,9 @@ struct RunCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Enable memory consolidation — persist facts across turns.")
     var memory: Bool = false
 
+    @Flag(name: .long, help: "Enable skill loading — inject skill summaries into the system prompt.")
+    var skills: Bool = false
+
     @Option(name: [.customLong("cache-mode")], help: "Prompt caching mode: none, anthropic, openai (HTTP backend only).")
     var cacheModeStr: String?
 
@@ -58,7 +62,7 @@ struct RunCommand: AsyncParsableCommand {
         switch backend {
         case .mlx:
             var adapterURL = adapter.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
-            if adapterURL == nil && autoAdapter {
+            if adapterURL == nil, autoAdapter {
                 // No prompt context at startup — tag component scores 0; selection falls back to loss+recency.
                 let context = ""
                 let adapterStore = try AdapterStore()
@@ -116,22 +120,38 @@ struct RunCommand: AsyncParsableCommand {
         let processMonitor = ProcessMonitor()
         var tools: [any SwiftClawTool] =
             SwiftClawToolFactory.allTools(config: config)
-            + PippinToolFactory.allTools()
-            + SwiftClawToolFactory.processTools(monitor: processMonitor)
+                + PippinToolFactory.allTools()
+                + SwiftClawToolFactory.processTools(monitor: processMonitor)
         if let memStore = agentMemory {
             tools += MemoryToolFactory.allTools(store: memStore)
         }
 
+        var basePrompt = """
+        You are Sysop, a macOS assistant. You have access to tools for system administration, \
+        file operations (read, write, list, find — sandboxed to allowed paths), \
+        environment inspection (env vars, date/time, clipboard), \
+        and pippin CLI wrappers for Apple Mail and Voice Memos (when pippin is installed). \
+        Be concise and accurate. When you use a tool, explain what you found. \
+        For mail_send, always confirm with the user before sending.
+        """
+
+        if skills || config.skillsEnabled {
+            let dirURL = config.skillsDirectory
+                .map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+            let skillStore = SkillStore(directory: dirURL)
+            let skillList = await skillStore.list()
+            tools += SkillToolFactory.allTools(store: skillStore)
+            if let section = SkillPromptSection.build(skills: skillList) {
+                basePrompt += section
+            }
+            if !skillList.isEmpty {
+                print("Skills enabled (\(skillList.count) loaded)\n")
+            }
+        }
+
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
-            systemPrompt: """
-                You are Sysop, a macOS assistant. You have access to tools for system administration, \
-                file operations (read, write, list, find — sandboxed to allowed paths), \
-                environment inspection (env vars, date/time, clipboard), \
-                and pippin CLI wrappers for Apple Mail and Voice Memos (when pippin is installed). \
-                Be concise and accurate. When you use a tool, explain what you found. \
-                For mail_send, always confirm with the user before sending.
-                """,
+            systemPrompt: basePrompt,
             tools: tools,
             modelId: model,
             generationConfig: GenerationConfig(maxTokens: maxTokens)
