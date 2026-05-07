@@ -215,6 +215,10 @@ final class ChatViewModel {
     // MARK: - Chat
 
     func newChat() async {
+        if let pending = pendingApproval {
+            pendingApproval = nil
+            pending.continuation.resume(returning: false)
+        }
         generationTask?.cancel()
         generationTask = nil
         messages = []
@@ -445,6 +449,12 @@ final class ChatViewModel {
         do {
             try await store.delete(sessionId: id)
             if selectedSessionId == id {
+                if let pending = pendingApproval {
+                    pendingApproval = nil
+                    pending.continuation.resume(returning: false)
+                }
+                generationTask?.cancel()
+                generationTask = nil
                 selectedSessionId = nil
                 session = nil
                 messages = []
