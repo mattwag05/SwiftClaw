@@ -40,8 +40,13 @@ public struct BuildDeleteFileTool: SwiftClawTool {
         }
 
         if isDir.boolValue {
-            let contents = (try? FileManager.default.contentsOfDirectory(atPath: targetURL.path)) ?? []
-            if !contents.isEmpty {
+            let contents: [String]
+            do {
+                contents = try FileManager.default.contentsOfDirectory(atPath: targetURL.path)
+            } catch {
+                return .failure("Cannot read directory: \(error.localizedDescription)")
+            }
+            guard contents.isEmpty else {
                 return .failure("Cannot delete non-empty directory: \(args.path). Delete its contents first.")
             }
         }
