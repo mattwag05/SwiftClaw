@@ -1,3 +1,4 @@
+import SwiftClawCore
 import SwiftClawUI
 import SwiftUI
 
@@ -7,6 +8,24 @@ struct ChatDetailView: View {
     @State private var scrollProxy: ScrollViewProxy?
 
     var body: some View {
+        if viewModel.sessionMode == .build && viewModel.canvasOpen,
+           let sessionId = viewModel.selectedSessionId {
+            HSplitView {
+                chatBody()
+                    .frame(minWidth: 340)
+                CanvasView(
+                    sessionId: sessionId,
+                    workspaceManager: viewModel.workspaceManager
+                )
+                .frame(minWidth: 320)
+            }
+        } else {
+            chatBody()
+        }
+    }
+
+    @ViewBuilder
+    private func chatBody() -> some View {
         @Bindable var vm = viewModel
         ZStack(alignment: .bottomTrailing) {
             // Dark dotted background

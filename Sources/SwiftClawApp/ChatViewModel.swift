@@ -108,6 +108,23 @@ final class ChatViewModel {
 
     var embeddingState: EmbeddingState = .idle
 
+    // MARK: Build mode + Canvas
+
+    /// The mode of the currently selected session.
+    var sessionMode: SessionMode = .chat
+
+    /// Whether the Canvas pane is open (Build mode only).
+    var canvasOpen: Bool = false
+
+    /// HSplitView divider position (0.0–1.0). Persisted per-session.
+    var canvasSplit: Double = 0.5
+
+    /// The file being written right now (for the Code tab live view).
+    var currentlyWritingFile: (path: String, partial: String)? = nil
+
+    /// Last file path written — Canvas observes this to trigger preview reload.
+    var canvasFileWrittenPath: String? = nil
+
     // MARK: Tool approval
 
     var toolApprovalOverrides: [String: Bool] = [:]
@@ -122,6 +139,7 @@ final class ChatViewModel {
     private var generationTask: Task<Void, Never>?
     private var currentMetadata: SessionMetadata?
     private var agentMemory: (any MemoryProvider)?
+    let workspaceManager: WorkspaceManager = (try? WorkspaceManager()) ?? (try! WorkspaceManager(baseDir: URL(fileURLWithPath: NSTemporaryDirectory())))
 
     init() {
         // FileSessionStore.init can throw only on directory creation failure;
@@ -408,6 +426,10 @@ final class ChatViewModel {
                 approvalDelegate: makeApprovalDelegate()
             )
             currentMetadata = restored.metadata
+            sessionMode = restored.metadata.mode
+            canvasSplit = restored.metadata.canvasSplit
+            canvasOpen = false
+            canvasFileWrittenPath = nil
             rebuildBubbles(from: restored.messages)
         } catch {
             errorMessage = "Failed to load session: \(error.localizedDescription)"
@@ -760,8 +782,15 @@ final class ChatViewModel {
                 case let .memoryUpdated(keys):
                     messages.append(ChatBubble(kind: .warning("Memory updated: \(keys.joined(separator: ", "))")))
 
-                case .fileStreaming, .fileWritten:
-                    break   // handled by Canvas in Build mode (Phase 5)
+                case let .fileStreaming(path, partial):
+                    currentlyWritingFile = (path: path, partial: partial)
+                    if sessionMode == .build { canvasOpen = true }
+
+                case let .fileWritten(path):
+                    if currentlyWritingFile?.path == path {
+                        currentlyWritingFile = nil
+                    }
+                    canvasFileWrittenPath = path
 
                 case .done:
                     // Finalize any streaming bubble that never got a .turn (e.g. cancelled mid-stream)
