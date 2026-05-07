@@ -44,9 +44,10 @@ struct WorkspaceWebView: NSViewRepresentable {
         // Reload when a new file has been written (350ms delay)
         if let path = lastWrittenPath, path != context.coordinator.lastPath {
             context.coordinator.lastPath = path
+            let sid = sessionId
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 let nonce = Int.random(in: 0..<Int.max)
-                let reloadURL = URL(string: "swiftclaw-workspace://\(sessionId)/?v=\(nonce)")!
+                guard let reloadURL = URL(string: "swiftclaw-workspace://\(sid)/?v=\(nonce)") else { return }
                 webView.load(URLRequest(url: reloadURL))
             }
         }
@@ -59,6 +60,6 @@ struct WorkspaceWebView: NSViewRepresentable {
     }
 
     private var rootURL: URL {
-        URL(string: "swiftclaw-workspace://\(sessionId)/")!
+        URL(string: "swiftclaw-workspace://\(sessionId)/") ?? URL(fileURLWithPath: "/")
     }
 }

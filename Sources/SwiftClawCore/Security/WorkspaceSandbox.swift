@@ -9,11 +9,11 @@ public struct WorkspaceSandbox: Sendable {
 
     /// Throws `storageError` if `target` is not a descendant of `base`.
     ///
-    /// Uses `standardizedFileURL` to resolve `..` components, symlinks included
-    /// in the path string, and trailing slashes before comparing.
+    /// Resolves symlinks via `resolvingSymlinksInPath` before comparing so that a
+    /// symlink inside the workspace pointing outside it is correctly rejected.
     public static func assertInWorkspace(base: URL, target: URL) throws {
-        let basePath = base.standardizedFileURL.path
-        let targetPath = target.standardizedFileURL.path
+        let basePath = base.standardizedFileURL.resolvingSymlinksInPath().path
+        let targetPath = target.standardizedFileURL.resolvingSymlinksInPath().path
         // Target must equal base exactly OR be a proper descendant (starts with basePath + "/")
         guard targetPath == basePath || targetPath.hasPrefix(basePath + "/") else {
             throw SwiftClawError.storageError(
@@ -23,7 +23,7 @@ public struct WorkspaceSandbox: Sendable {
     }
 
     /// Resolves `relativePath` against `workspaceBase`, then validates it stays
-    /// inside the workspace. Returns the absolute URL.
+    /// inside the workspace. Returns the absolute, symlink-resolved URL.
     ///
     /// Absolute paths are accepted only when they fall inside the workspace.
     public static func resolve(path relativePath: String, in workspaceBase: URL) throws -> URL {
@@ -33,7 +33,8 @@ public struct WorkspaceSandbox: Sendable {
         } else {
             raw = workspaceBase.appendingPathComponent(relativePath)
         }
-        try assertInWorkspace(base: workspaceBase, target: raw)
-        return raw.standardizedFileURL
+        let resolved = raw.standardizedFileURL.resolvingSymlinksInPath()
+        try assertInWorkspace(base: workspaceBase, target: resolved)
+        return resolved
     }
 }

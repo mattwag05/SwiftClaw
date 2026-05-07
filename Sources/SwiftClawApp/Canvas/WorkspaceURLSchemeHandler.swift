@@ -69,7 +69,10 @@ final class WorkspaceURLSchemeHandler: NSObject, WKURLSchemeHandler {
 
         let items = (try? FileManager.default.contentsOfDirectory(atPath: workspaceURL.path)) ?? []
         let links = items.sorted().map { name in
-            "<li><a href=\"/\(name)\">\(name)</a></li>"
+            let escaped = htmlEscape(name)
+            // URL-encode the href separately from HTML-escaping the display text.
+            let href = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? escaped
+            return "<li><a href=\"/\(href)\">\(escaped)</a></li>"
         }.joined(separator: "\n")
         let html = "<html><body><ul>\(links)</ul></body></html>"
         respond(task, data: Data(html.utf8), mimeType: "text/html")
@@ -85,7 +88,7 @@ final class WorkspaceURLSchemeHandler: NSObject, WKURLSchemeHandler {
 
     private func respond(_ task: any WKURLSchemeTask, data: Data, mimeType: String) {
         guard let url = task.request.url else {
-            task.didFailWithError(URLError(.badURL))
+            DispatchQueue.main.async { task.didFailWithError(URLError(.badURL)) }
             return
         }
         let response = URLResponse(
@@ -94,13 +97,24 @@ final class WorkspaceURLSchemeHandler: NSObject, WKURLSchemeHandler {
             expectedContentLength: data.count,
             textEncodingName: "utf-8"
         )
-        task.didReceive(response)
-        task.didReceive(data)
-        task.didFinish()
+        // WKURLSchemeTask must be driven from the main thread (same as the webView(_:start:) call site).
+        DispatchQueue.main.async {
+            task.didReceive(response)
+            task.didReceive(data)
+            task.didFinish()
+        }
     }
 
     private func fail(_ task: any WKURLSchemeTask, status: Int, message: String) {
-        let html = "<html><body><h1>\(status)</h1><p>\(message)</p></body></html>"
+        let escaped = htmlEscape(message)
+        let html = "<html><body><h1>\(status)</h1><p>\(escaped)</p></body></html>"
         respond(task, data: Data(html.utf8), mimeType: "text/html")
+    }
+
+    private func htmlEscape(_ str: String) -> String {
+        str.replacingOccurrences(of: "&", with: "&amp;")
+           .replacingOccurrences(of: "<", with: "&lt;")
+           .replacingOccurrences(of: ">", with: "&gt;")
+           .replacingOccurrences(of: "\"", with: "&quot;")
     }
 }
