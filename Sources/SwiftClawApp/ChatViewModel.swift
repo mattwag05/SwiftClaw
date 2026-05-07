@@ -193,18 +193,12 @@ final class ChatViewModel {
                 Task { await discoverModels() }
 
             case .http:
-                guard let url = URL(string: httpURL) else {
+                guard URL(string: httpURL) != nil else {
                     backendState = .error("Invalid URL: \(httpURL)")
                     return
                 }
                 let httpModel = modelId == "mlx-community/Qwen3.5-9B-MLX-4bit" ? "qwen2.5:7b" : modelId
-                let config = (try? SwiftClawConfig.load()) ?? .default
-                backend = HTTPBackend(
-                    baseURL: url,
-                    model: httpModel,
-                    apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey,
-                    cacheMode: config.cacheMode
-                )
+                rebuildHTTPBackend(model: httpModel)
                 backendState = .ready
                 Task { await discoverModels() }
             }
@@ -631,9 +625,25 @@ final class ChatViewModel {
     func selectDiscoveredModel(_ model: DiscoveredModel) async {
         modelId = model.id
         await fetchModelInfo(for: model.id)
+        // HTTP backend bakes the model ID at init time — rebuild it so the next
+        // generation uses the chosen model rather than the original default.
+        if backendType == .http {
+            rebuildHTTPBackend(model: model.id)
+        }
     }
 
     // MARK: - Private Helpers
+
+    private func rebuildHTTPBackend(model: String) {
+        guard let url = URL(string: httpURL) else { return }
+        let config = (try? SwiftClawConfig.load()) ?? .default
+        backend = HTTPBackend(
+            baseURL: url,
+            model: model,
+            apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey,
+            cacheMode: config.cacheMode
+        )
+    }
 
     private func buildBasePrompt(mode: SessionMode, sessionId: String, systemPromptOverride: String? = nil) async -> String {
         let workspacePath: String? = mode == .build
