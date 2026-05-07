@@ -15,6 +15,14 @@ public struct SessionMetadata: Codable, Sendable {
     public var folderID: UUID?
     public var tags: [String]
 
+    // Build-mode fields. Additive since v2026-05 (Gemma port).
+    /// Chat or Build mode. Defaults to `.chat` for pre-existing sessions.
+    public var mode: SessionMode
+    /// HSplitView divider position for the canvas (0.0–1.0). Persisted per-session.
+    public var canvasSplit: Double
+    /// User-provided system-prompt override for this session. `nil` = use default.
+    public var systemPromptOverride: String?
+
     public init(
         agentName: String,
         modelId: String,
@@ -24,7 +32,10 @@ public struct SessionMetadata: Codable, Sendable {
         isPinned: Bool = false,
         pinnedAt: Date? = nil,
         folderID: UUID? = nil,
-        tags: [String] = []
+        tags: [String] = [],
+        mode: SessionMode = .chat,
+        canvasSplit: Double = 0.5,
+        systemPromptOverride: String? = nil
     ) {
         self.agentName = agentName
         self.modelId = modelId
@@ -35,11 +46,15 @@ public struct SessionMetadata: Codable, Sendable {
         self.pinnedAt = pinnedAt
         self.folderID = folderID
         self.tags = tags
+        self.mode = mode
+        self.canvasSplit = canvasSplit
+        self.systemPromptOverride = systemPromptOverride
     }
 
     enum CodingKeys: String, CodingKey {
         case agentName, modelId, createdAt, updatedAt
         case title, isPinned, pinnedAt, folderID, tags
+        case mode, canvasSplit, systemPromptOverride
     }
 
     public init(from decoder: any Decoder) throws {
@@ -53,6 +68,9 @@ public struct SessionMetadata: Codable, Sendable {
         pinnedAt = try c.decodeIfPresent(Date.self, forKey: .pinnedAt)
         folderID = try c.decodeIfPresent(UUID.self, forKey: .folderID)
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        mode = try c.decodeIfPresent(SessionMode.self, forKey: .mode) ?? .chat
+        canvasSplit = try c.decodeIfPresent(Double.self, forKey: .canvasSplit) ?? 0.5
+        systemPromptOverride = try c.decodeIfPresent(String.self, forKey: .systemPromptOverride)
     }
 }
 
