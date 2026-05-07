@@ -35,13 +35,18 @@ public actor WorkspaceManager {
         return dir
     }
 
-    /// Returns `true` if the workspace for `sessionId` exists but contains no files.
+    /// Returns `true` if the workspace for `sessionId` has no user-visible files.
+    /// Ignores macOS metadata files (`.DS_Store`, `._*`) so a workspace that only
+    /// has Finder metadata is still treated as empty.
     public func isEmpty(sessionId: String) -> Bool {
         let dir = path(for: sessionId)
         guard let contents = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
             return true  // Doesn't exist → treat as empty
         }
-        return contents.isEmpty
+        let userVisible = contents.filter { name in
+            name != ".DS_Store" && !name.hasPrefix("._")
+        }
+        return userVisible.isEmpty
     }
 
     /// Deletes the workspace directory for `sessionId`.

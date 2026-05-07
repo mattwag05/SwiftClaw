@@ -34,8 +34,16 @@ public struct BuildDeleteFileTool: SwiftClawTool {
             return .failure(error.localizedDescription)
         }
 
-        guard FileManager.default.fileExists(atPath: targetURL.path) else {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: targetURL.path, isDirectory: &isDir) else {
             return .failure("Not found: \(args.path)")
+        }
+
+        if isDir.boolValue {
+            let contents = (try? FileManager.default.contentsOfDirectory(atPath: targetURL.path)) ?? []
+            if !contents.isEmpty {
+                return .failure("Cannot delete non-empty directory: \(args.path). Delete its contents first.")
+            }
         }
 
         do {
