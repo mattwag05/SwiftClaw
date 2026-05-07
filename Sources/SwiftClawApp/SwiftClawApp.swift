@@ -13,8 +13,12 @@ struct SwiftClawApp: App {
                 .environment(viewModel)
                 .environment(commandRegistry)
                 .preferredColorScheme(appearance.colorScheme)
+                .gemmaWindowChrome()
         }
-        .defaultSize(width: 1100, height: 700)
+        .defaultSize(
+            width:  GemmaLayout.windowDefaultSize.width,
+            height: GemmaLayout.windowDefaultSize.height
+        )
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
