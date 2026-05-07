@@ -233,11 +233,13 @@ final class ChatViewModel {
         if let memStore = agentMemory {
             tools += MemoryToolFactory.allTools(store: memStore)
         }
-        var basePrompt = """
-        You are Sysop, a macOS assistant. You have access to tools for system administration, \
-        file operations (sandboxed), environment inspection, and optionally pippin CLI wrappers \
-        for Apple Mail and Voice Memos. Be concise and accurate.
-        """
+        let workspacePath: String? = sessionMode == .build
+            ? await workspaceManager.path(for: sessionId).path : nil
+        var basePrompt = SystemPromptBuilder(
+            mode: sessionMode,
+            workspacePath: workspacePath,
+            sessionId: sessionId
+        ).build(enableTools: true)
         await applySkills(config: config, tools: &tools, prompt: &basePrompt)
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
@@ -396,7 +398,15 @@ final class ChatViewModel {
             if let memStore = agentMemory {
                 tools += MemoryToolFactory.allTools(store: memStore)
             }
-            var basePrompt = "You are Sysop, a macOS assistant."
+            let restoredMode = restored.metadata.mode
+            let restoredWorkspacePath: String? = restoredMode == .build
+                ? await workspaceManager.path(for: id).path : nil
+            var basePrompt = SystemPromptBuilder(
+                mode: restoredMode,
+                workspacePath: restoredWorkspacePath,
+                sessionId: id,
+                override: restored.metadata.systemPromptOverride
+            ).build(enableTools: true)
             await applySkills(config: config, tools: &tools, prompt: &basePrompt)
             let agentConfig = AgentConfiguration(
                 name: restored.metadata.agentName,
