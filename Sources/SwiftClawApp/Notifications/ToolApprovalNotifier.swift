@@ -15,7 +15,7 @@ import UserNotifications
 /// `await approve(command:sessionId:)` and the answer comes back when the user
 /// taps a button (or the 60-second timeout fires → Deny).
 @MainActor
-public final class ToolApprovalNotifier: NSObject, UNUserNotificationCenterDelegate, Sendable {
+public final class ToolApprovalNotifier: NSObject, UNUserNotificationCenterDelegate, BashApprovalDelegate, Sendable {
     public static let shared = ToolApprovalNotifier()
 
     // MARK: - Notification category / action identifiers
@@ -73,6 +73,17 @@ public final class ToolApprovalNotifier: NSObject, UNUserNotificationCenterDeleg
 
     /// Request permission and post an approval notification.
     /// Suspends until the user responds (or the 60-second timeout fires).
+    /// Conforms to `BashApprovalDelegate`.
+    public func approveBash(command: String, requestId: String) async -> BashApprovalResult {
+        let r = await requestApproval(command: command, requestId: requestId)
+        switch r {
+        case .allowOnce:    return .allowOnce
+        case .allowSession: return .allowSession
+        case .addToAllowlist: return .addToAllowlist
+        case .deny:         return .deny
+        }
+    }
+
     public func requestApproval(command: String, requestId: String) async -> ApprovalResult {
         let granted = await requestPermission()
         guard granted else { return .deny }

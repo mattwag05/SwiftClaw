@@ -760,6 +760,9 @@ final class ChatViewModel {
                 case let .memoryUpdated(keys):
                     messages.append(ChatBubble(kind: .warning("Memory updated: \(keys.joined(separator: ", "))")))
 
+                case .fileStreaming, .fileWritten:
+                    break   // handled by Canvas in Build mode (Phase 5)
+
                 case .done:
                     // Finalize any streaming bubble that never got a .turn (e.g. cancelled mid-stream)
                     if let id = streamingBubbleId,

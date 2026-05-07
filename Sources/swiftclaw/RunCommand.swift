@@ -374,6 +374,10 @@ struct RunCommand: AsyncParsableCommand {
                         fputs("\u{001B}[33m[warning] \(msg)\u{001B}[0m\n", stderr)
                     case let .memoryUpdated(keys):
                         fputs("\u{001B}[2m[memory] stored: \(keys.joined(separator: ", "))\u{001B}[0m\n", stderr)
+                    case let .fileStreaming(path, _):
+                        fputs("\u{001B}[2m[writing \(path)...]\u{001B}[0m\n", stderr)
+                    case let .fileWritten(path):
+                        fputs("\u{001B}[2m[wrote \(path)]\u{001B}[0m\n", stderr)
                     }
                 }
                 // Auto-save after each complete turn
