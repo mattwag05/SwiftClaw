@@ -8,6 +8,11 @@ public protocol ModelBackend: Sendable {
         tools: [ToolDefinition],
         config: GenerationConfig
     ) -> AsyncThrowingStream<StreamChunk, Error>
+
+    /// Tool protocol this backend uses for emitting tool calls.
+    /// Defaults to `.json` (OpenAI-compatible tool_calls).
+    /// Override to `.xml` for backends whose models emit `<action>` blocks.
+    var preferredToolProtocol: ToolProtocol { get }
 }
 
 extension ModelBackend {

@@ -42,6 +42,10 @@ public final class MLXBackend: ModelBackend, @unchecked Sendable {
         self.modelContainer = modelContainer
     }
 
+    /// MLX models use XML action blocks for tool calls (more reliable than native
+    /// tool_calls on small local models like Qwen3.5).
+    public var preferredToolProtocol: SwiftClawCore.ToolProtocol { .xml }
+
     public nonisolated func generate(
         messages: [SwiftClawCore.Message],
         tools: [ToolDefinition],

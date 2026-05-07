@@ -6,20 +6,22 @@ import Foundation
 /// Session is an actor to protect the mutable `messages` array
 /// under Swift 6 strict concurrency.
 public actor Session {
-    private var messages: [Message]
-    private let agent: Agent
-    private let backend: any ModelBackend
-    private let config: SessionConfiguration
+    // `internal` (not private) so Session+XMLDispatch.swift can access them.
+    // Actor isolation still protects them from concurrent mutation.
+    var messages: [Message]
+    let agent: Agent
+    let backend: any ModelBackend
+    let config: SessionConfiguration
     public let sessionId: String?
-    private var isRunning: Bool = false
-    private let approvalDelegate: (any ToolApprovalDelegate)?
-    private let processMonitor: ProcessMonitor?
+    var isRunning: Bool = false
+    let approvalDelegate: (any ToolApprovalDelegate)?
+    let processMonitor: ProcessMonitor?
 
     // Memory support (optional)
-    private let memory: (any MemoryProvider)?
-    private let consolidator: MemoryConsolidator
-    private let compressor: ContextCompressor
-    private var turnsSinceConsolidation: Int = 0
+    let memory: (any MemoryProvider)?
+    let consolidator: MemoryConsolidator
+    let compressor: ContextCompressor
+    var turnsSinceConsolidation: Int = 0
 
     /// Create a new session with a fresh conversation history.
     public init(
@@ -100,14 +102,25 @@ public actor Session {
                     return
                 }
                 do {
-                    try await self.runLoop(
-                        prompt: prompt,
-                        agent: agent,
-                        backend: backend,
-                        config: config,
-                        approvalDelegate: approvalDelegate,
-                        continuation: continuation
-                    )
+                    if backend.preferredToolProtocol == .xml {
+                        try await self.runXMLLoop(
+                            prompt: prompt,
+                            agent: agent,
+                            backend: backend,
+                            config: config,
+                            approvalDelegate: approvalDelegate,
+                            continuation: continuation
+                        )
+                    } else {
+                        try await self.runLoop(
+                            prompt: prompt,
+                            agent: agent,
+                            backend: backend,
+                            config: config,
+                            approvalDelegate: approvalDelegate,
+                            continuation: continuation
+                        )
+                    }
                     await self.setRunning(false)
                     continuation.finish()
                 } catch {
@@ -118,8 +131,8 @@ public actor Session {
         }
     }
 
-    /// The core agentic loop.
-    private func runLoop(
+    /// The core agentic loop (JSON tool protocol path).
+    func runLoop(
         prompt: String,
         agent: Agent,
         backend: any ModelBackend,
@@ -386,12 +399,12 @@ public actor Session {
         continuation.yield(.done)
     }
 
-    private func setRunning(_ value: Bool) {
+    func setRunning(_ value: Bool) {
         isRunning = value
     }
 
     /// Strip tool-call XML blocks from a text chunk (Qwen3.5 text-injection format).
-    private func stripToolCallXML(_ text: String) -> String {
+    func stripToolCallXML(_ text: String) -> String {
         var result = text
         if result.contains("<tool_call>") {
             result = result.replacingOccurrences(
