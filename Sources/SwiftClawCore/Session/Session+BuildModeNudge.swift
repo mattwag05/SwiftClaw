@@ -6,6 +6,6 @@ extension Session {
     public func needsBuildNudge(mode: SessionMode, lastAssistantText: String) -> Bool {
         guard mode == .build else { return false }
         let hasAction = lastAssistantText.contains("<action ")
-        return !hasAction && !lastAssistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return !hasAction && !lastAssistantText.isEmpty
     }
 }

@@ -233,13 +233,7 @@ final class ChatViewModel {
         if let memStore = agentMemory {
             tools += MemoryToolFactory.allTools(store: memStore)
         }
-        let workspacePath: String? = sessionMode == .build
-            ? await workspaceManager.path(for: sessionId).path : nil
-        var basePrompt = SystemPromptBuilder(
-            mode: sessionMode,
-            workspacePath: workspacePath,
-            sessionId: sessionId
-        ).build(enableTools: true)
+        var basePrompt = await buildBasePrompt(mode: sessionMode, sessionId: sessionId)
         await applySkills(config: config, tools: &tools, prompt: &basePrompt)
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
@@ -399,14 +393,11 @@ final class ChatViewModel {
                 tools += MemoryToolFactory.allTools(store: memStore)
             }
             let restoredMode = restored.metadata.mode
-            let restoredWorkspacePath: String? = restoredMode == .build
-                ? await workspaceManager.path(for: id).path : nil
-            var basePrompt = SystemPromptBuilder(
+            var basePrompt = await buildBasePrompt(
                 mode: restoredMode,
-                workspacePath: restoredWorkspacePath,
                 sessionId: id,
-                override: restored.metadata.systemPromptOverride
-            ).build(enableTools: true)
+                systemPromptOverride: restored.metadata.systemPromptOverride
+            )
             await applySkills(config: config, tools: &tools, prompt: &basePrompt)
             let agentConfig = AgentConfiguration(
                 name: restored.metadata.agentName,
@@ -643,6 +634,17 @@ final class ChatViewModel {
     }
 
     // MARK: - Private Helpers
+
+    private func buildBasePrompt(mode: SessionMode, sessionId: String, systemPromptOverride: String? = nil) async -> String {
+        let workspacePath: String? = mode == .build
+            ? await workspaceManager.path(for: sessionId).path : nil
+        return SystemPromptBuilder(
+            mode: mode,
+            workspacePath: workspacePath,
+            sessionId: sessionId,
+            systemPromptOverride: systemPromptOverride
+        ).build(enableTools: true)
+    }
 
     private func applySkills(config: SwiftClawConfig, tools: inout [any SwiftClawTool], prompt: inout String) async {
         guard config.skillsEnabled else { return }
