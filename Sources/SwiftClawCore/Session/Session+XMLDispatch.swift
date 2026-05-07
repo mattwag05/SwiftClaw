@@ -86,7 +86,7 @@ extension Session {
 
         for _ in 0 ..< config.maxToolRoundTrips {
             // Buffers for this round.
-            var thinkBuffer: [String] = []
+            var thinkBuffer = ""
             var sawThinkEnd = false
             var actionBuffer = ""   // Post-think text, scanned for <action> blocks
             var fullText = ""       // Complete model output including action blocks
@@ -111,15 +111,14 @@ extension Session {
                 if sawThinkEnd {
                     actionBuffer += text
                 } else {
-                    thinkBuffer.append(text)
-                    let combined = thinkBuffer.joined()
-                    if let thinkEndRange = combined.range(of: "</think>") {
+                    thinkBuffer += text
+                    if let thinkEndRange = thinkBuffer.range(of: "</think>") {
                         sawThinkEnd = true
-                        let thinkPart = String(combined[..<thinkEndRange.lowerBound])
+                        let thinkPart = String(thinkBuffer[..<thinkEndRange.lowerBound])
                             .replacingOccurrences(of: "<think>", with: "")
                             .trimmingCharacters(in: .whitespacesAndNewlines)
-                        actionBuffer = String(combined[thinkEndRange.upperBound...])
-                        thinkBuffer = []
+                        actionBuffer = String(thinkBuffer[thinkEndRange.upperBound...])
+                        thinkBuffer = ""
                         if !thinkPart.isEmpty {
                             continuation.yield(.thinkingDelta(thinkPart))
                         }
@@ -145,7 +144,7 @@ extension Session {
 
             // After stream ends: flush think buffer if no </think> found.
             if !sawThinkEnd, !thinkBuffer.isEmpty {
-                actionBuffer = thinkBuffer.joined()
+                actionBuffer = thinkBuffer
             }
 
             // Final drain of actionBuffer.

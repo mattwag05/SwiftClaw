@@ -212,7 +212,8 @@ public actor Session {
             // Streaming generation with think-block detection.
             // Text chunks are buffered until we know if they're thinking or real content.
             // Buffering per-chunk (not concatenated) so each can be flushed individually.
-            var bufferedChunks: [String] = [] // Pre-</think> chunks, waiting for classification
+            var bufferedChunks: [String] = [] // kept as [String] so each can be flushed individually on the no-think path
+            var combinedBuffer = "" // avoids O(n²) joined() on every chunk
             var postThinkText = "" // Confirmed real text (after </think>)
             var sawThinkEnd = false
             var accumulatedToolCalls: [ToolCallRequest] = []
@@ -236,16 +237,16 @@ public actor Session {
                         }
                     } else {
                         bufferedChunks.append(text)
-                        // Check if </think> appeared anywhere in the accumulated buffer
-                        let combined = bufferedChunks.joined()
-                        if let range = combined.range(of: "</think>") {
+                        combinedBuffer += text
+                        if let range = combinedBuffer.range(of: "</think>") {
                             sawThinkEnd = true
-                            var thinkPart = String(combined[combined.startIndex ..< range.lowerBound])
+                            var thinkPart = String(combinedBuffer[combinedBuffer.startIndex ..< range.lowerBound])
                             thinkPart = thinkPart
                                 .replacingOccurrences(of: "<think>", with: "")
                                 .trimmingCharacters(in: .whitespacesAndNewlines)
-                            let afterThink = String(combined[range.upperBound...])
+                            let afterThink = String(combinedBuffer[range.upperBound...])
                             bufferedChunks = []
+                            combinedBuffer = ""
                             if !thinkPart.isEmpty {
                                 continuation.yield(.thinkingDelta(thinkPart))
                             }
@@ -276,7 +277,7 @@ public actor Session {
                         continuation.yield(.textDelta(cleaned))
                     }
                 }
-                postThinkText = bufferedChunks.joined()
+                postThinkText = combinedBuffer
             }
 
             // Build clean final text (same cleanup as the non-streaming convenience method)
