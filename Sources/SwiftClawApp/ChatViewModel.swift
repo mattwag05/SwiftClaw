@@ -139,7 +139,12 @@ final class ChatViewModel {
     private var generationTask: Task<Void, Never>?
     private var currentMetadata: SessionMetadata?
     private var agentMemory: (any MemoryProvider)?
-    let workspaceManager: WorkspaceManager = (try? WorkspaceManager()) ?? (try! WorkspaceManager(baseDir: URL(fileURLWithPath: NSTemporaryDirectory())))
+    let workspaceManager: WorkspaceManager = {
+        if let wm = (try? WorkspaceManager()) ?? (try? WorkspaceManager(baseDir: URL(fileURLWithPath: NSTemporaryDirectory()))) {
+            return wm
+        }
+        fatalError("Cannot create WorkspaceManager: both default and temp-dir attempts failed")
+    }()
 
     init() {
         // FileSessionStore.init can throw only on directory creation failure;
@@ -370,6 +375,11 @@ final class ChatViewModel {
 
     func selectSession(id: String) async {
         guard id != selectedSessionId else { return }
+        // Resume any pending approval before switching — avoids leaking a suspended continuation.
+        if let pending = pendingApproval {
+            pendingApproval = nil
+            pending.continuation.resume(returning: false)
+        }
         generationTask?.cancel()
         generationTask = nil
         messages = []

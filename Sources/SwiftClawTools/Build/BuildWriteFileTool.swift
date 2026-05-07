@@ -54,21 +54,20 @@ public struct BuildWriteFileTool: SwiftClawTool {
             return .failure("Content could not be encoded as UTF-8")
         }
 
-        if FileManager.default.fileExists(atPath: targetURL.path) {
-            let tempURL = dir.appendingPathComponent(".\(targetURL.lastPathComponent).swiftclaw-tmp")
+        // Always write via temp file. For new files try moveItem (atomic rename on same FS);
+        // if the file was created concurrently, fall back to replaceItemAt. This eliminates
+        // the TOCTOU window between the old fileExists check and the non-atomic write.
+        let tempURL = dir.appendingPathComponent(".\(targetURL.lastPathComponent).swiftclaw-tmp")
+        do {
+            try data.write(to: tempURL)
             do {
-                try data.write(to: tempURL)
+                try FileManager.default.moveItem(at: tempURL, to: targetURL)
+            } catch {
                 _ = try FileManager.default.replaceItemAt(targetURL, withItemAt: tempURL)
-            } catch {
-                try? FileManager.default.removeItem(at: tempURL)
-                return .failure("Write failed: \(error.localizedDescription)")
             }
-        } else {
-            do {
-                try data.write(to: targetURL)
-            } catch {
-                return .failure("Write failed: \(error.localizedDescription)")
-            }
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            return .failure("Write failed: \(error.localizedDescription)")
         }
 
         eventSink?(.fileWritten(path: args.path))

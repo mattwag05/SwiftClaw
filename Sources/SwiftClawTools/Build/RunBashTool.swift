@@ -106,17 +106,18 @@ public struct RunBashTool: SwiftClawTool {
                 group.leave()
             }
 
-            let timeoutTask = Task {
-                try await Task.sleep(for: .seconds(Self.timeoutSeconds))
-                process.terminate()
-            }
-
             do {
                 try process.run()
             } catch {
-                timeoutTask.cancel()
                 continuation.resume(returning: .failure("Failed to start: \(error.localizedDescription)"))
                 return
+            }
+
+            // Capture pid after run() — processIdentifier is 0 before the process starts.
+            let pid = process.processIdentifier
+            let timeoutTask = Task {
+                try await Task.sleep(for: .seconds(Self.timeoutSeconds))
+                if pid != 0 { kill(pid, SIGKILL) }
             }
 
             group.notify(queue: .global()) {
