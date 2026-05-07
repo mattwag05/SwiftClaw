@@ -173,4 +173,36 @@ struct BashAllowlistTests {
         let result = await list.decision(for: "sudo apt-get install curl")
         #expect(result == .blocked)
     }
+
+    // MARK: - Prefix boundary safety
+
+    @Test("ls prefix does not allow lsof (prefix overmatch regression)")
+    func lsPrefixDoesNotAllowLsof() async throws {
+        let list = try makeList(mode: .build)
+        // "ls" is in the build seed — "lsof" starts with "ls" but must not be auto-allowed
+        let result = await list.decision(for: "lsof -p 1234")
+        #expect(result == .requiresPrompt)
+    }
+
+    @Test("exact prefix match is allowed")
+    func exactPrefixMatchAllowed() async throws {
+        let list = try makeList(mode: .build)
+        let result = await list.decision(for: "ls")
+        #expect(result == .allowed)
+    }
+
+    @Test("prefix with space is allowed")
+    func prefixWithSpaceAllowed() async throws {
+        let list = try makeList(mode: .build)
+        let result = await list.decision(for: "ls -la")
+        #expect(result == .allowed)
+    }
+
+    @Test("prefix with tab is allowed")
+    func prefixWithTabAllowed() async throws {
+        let list = try makeList(mode: .build)
+        try await list.add(prefix: "node")
+        let result = await list.decision(for: "node\t--version")
+        #expect(result == .allowed)
+    }
 }

@@ -173,6 +173,47 @@ struct SessionXMLDispatchTests {
         #expect(gotDone)
     }
 
+    @Test func systemMessageDoesNotAccumulateAcrossTurns() async throws {
+        // Regression: runXMLLoop appended the XML block on every call — a 5-turn
+        // session had the block repeated 5×, bloating the system message indefinitely.
+        struct LengthCapturingBackend: ModelBackend {
+            var preferredToolProtocol: ToolProtocol { .xml }
+            let capture: @Sendable (Int) -> Void
+
+            func generate(
+                messages: [Message],
+                tools _: [ToolDefinition],
+                config _: GenerationConfig
+            ) -> AsyncThrowingStream<StreamChunk, Error> {
+                if let sys = messages.first(where: { $0.role == .system }) {
+                    capture(sys.content.count)
+                }
+                return AsyncThrowingStream { c in
+                    c.yield(StreamChunk(text: "ok"))
+                    c.yield(StreamChunk(finishReason: .stop))
+                    c.finish()
+                }
+            }
+        }
+
+        let lengths = LengthsBox()
+        let backend = LengthCapturingBackend(capture: { lengths.append($0) })
+        let agent = Agent(configuration: AgentConfiguration(
+            name: "A", systemPrompt: "Base.",
+            tools: [XMLEchoTool()], modelId: "len"
+        ))
+        let session = Session(agent: agent, backend: backend)
+
+        for try await _ in await session.respond(to: "Turn 1") {}
+        for try await _ in await session.respond(to: "Turn 2") {}
+        for try await _ in await session.respond(to: "Turn 3") {}
+
+        let all = lengths.values
+        #expect(all.count == 3, "Should capture one system message per turn")
+        // Each turn's system message must be the same size — no accumulation.
+        #expect(all.max() == all.min(), "System message must not grow across turns (got \(all))")
+    }
+
     @Test func xmlToolDeclarationInjectedIntoSystemMessage() async throws {
         // The XML formatter should inject a tool block; verify the backend
         // receives a system message containing "Available Tools".
@@ -214,4 +255,13 @@ struct SessionXMLDispatchTests {
 /// Thread-safe string box for capture in test closures.
 private final class CaptureBox: @unchecked Sendable {
     var value: String = ""
+}
+
+/// Thread-safe Int array for capturing lengths across async turns.
+/// @unchecked Sendable is safe here: the test awaits each respond() call fully
+/// before the next, so mutations are never concurrent.
+private final class LengthsBox: @unchecked Sendable {
+    private var _values: [Int] = []
+    func append(_ v: Int) { _values.append(v) }
+    var values: [Int] { _values }
 }

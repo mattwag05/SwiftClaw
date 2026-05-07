@@ -106,9 +106,14 @@ public actor BashAllowlist {
             }
         }
 
-        // Allowlist prefix check.
-        for prefix in prefixes where trimmed.hasPrefix(prefix) {
-            return .allowed
+        // Prevent overmatch: "ls" must not allow "lsof". Require exact match or a
+        // whitespace delimiter immediately after the prefix (no string allocations).
+        for prefix in prefixes {
+            guard trimmed.hasPrefix(prefix) else { continue }
+            let rest = trimmed.dropFirst(prefix.count)
+            if rest.isEmpty || rest.first == " " || rest.first == "\t" {
+                return .allowed
+            }
         }
 
         return .requiresPrompt

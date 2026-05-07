@@ -11,12 +11,15 @@ public struct KagiProvider: SearchProvider {
     }
 
     public func search(query: String, limit: Int) async throws -> [SearchResult] {
-        var comps = URLComponents(string: Self.endpoint)!
+        guard var comps = URLComponents(string: Self.endpoint) else {
+            throw URLError(.badURL)
+        }
         comps.queryItems = [
             .init(name: "q", value: query),
             .init(name: "limit", value: "\(limit)"),
         ]
-        var request = URLRequest(url: comps.url!)
+        guard let searchURL = comps.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: searchURL)
         request.setValue("Bot \(apiKey)", forHTTPHeaderField: "Authorization")
 
         let (data, _) = try await URLSession.shared.data(for: request)

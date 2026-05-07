@@ -10,13 +10,18 @@ public struct SearXNGProvider: SearchProvider {
     }
 
     public func search(query: String, limit: Int) async throws -> [SearchResult] {
-        var comps = URLComponents(string: "\(baseURL)/search")!
+        guard var comps = URLComponents(string: "\(baseURL)/search") else {
+            throw URLError(.badURL)
+        }
         comps.queryItems = [
             .init(name: "q", value: query),
             .init(name: "format", value: "json"),
             .init(name: "engines", value: "google,bing"),
         ]
-        var request = URLRequest(url: comps.url!)
+        guard let searchURL = comps.url else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: searchURL)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let (data, _) = try await URLSession.shared.data(for: request)

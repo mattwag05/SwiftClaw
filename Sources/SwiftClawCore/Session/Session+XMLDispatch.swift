@@ -19,33 +19,31 @@ extension Session {
         let parser = XMLActionParser()
         let formatter = XMLActionFormatter()
 
-        // 1. Memory injection (mirrors the JSON runLoop exactly).
+        // 1. Build the system message content for this turn (single allocation).
+        //    Reset prevents XML block + memories from accumulating across turns.
+        let basePrompt = agent.configuration.systemPrompt
+        var systemContent = basePrompt
+
         if config.memoryEnabled, let mem = memory {
-            let basePrompt = agent.configuration.systemPrompt
-            if !messages.isEmpty {
-                messages[0] = Message(role: .system, content: basePrompt)
-            }
             let relevant = (try? await mem.search(query: prompt, layer: nil, topK: config.retrievalTopK)) ?? []
             let filtered = relevant.filter { $0.score >= config.retrievalThreshold }
             if !filtered.isEmpty {
                 let factsText = filtered.map { "- \($0.entry.key): \($0.entry.content)" }.joined(separator: "\n")
-                let enriched = basePrompt + "\n\n## Relevant Memories\n" + factsText
-                if !messages.isEmpty {
-                    messages[0] = Message(role: .system, content: enriched)
-                }
+                systemContent += "\n\n## Relevant Memories\n" + factsText
             }
         }
 
-        // 2. Append XML tool-use block to system message (once — stays for all rounds).
         let xmlBlock = formatter.formatToolBlock(tools: agent.toolRegistry.definitions)
-        if !xmlBlock.isEmpty, !messages.isEmpty {
-            messages[0] = Message(role: .system, content: messages[0].content + xmlBlock)
+        if !xmlBlock.isEmpty { systemContent += xmlBlock }
+
+        if !messages.isEmpty {
+            messages[0] = Message(role: .system, content: systemContent)
         }
 
-        // 3. Append user message.
+        // 4. Append user message.
         messages.append(Message(role: .user, content: prompt))
 
-        // 4. Context compression (mirrors the JSON runLoop).
+        // 5. Context compression (mirrors the JSON runLoop).
         if let threshold = config.compressionTokenThreshold,
            compressor.estimateTokens(messages) > threshold
         {
@@ -73,7 +71,7 @@ extension Session {
             continuation.yield(.warning("Context compressed — older messages summarized"))
         }
 
-        // 5. Hard trim (fallback overflow guard).
+        // 6. Hard trim (fallback overflow guard).
         if messages.count > config.maxTotalMessages {
             let keepCount = max(1, config.maxTotalMessages - 1)
             var trimmed = Array(messages.dropFirst().suffix(keepCount))
@@ -83,7 +81,7 @@ extension Session {
             messages = [messages[0]] + trimmed
         }
 
-        // 6. XML agentic loop.
+        // 7. XML agentic loop.
         var lastDisplayText = ""
 
         for _ in 0 ..< config.maxToolRoundTrips {

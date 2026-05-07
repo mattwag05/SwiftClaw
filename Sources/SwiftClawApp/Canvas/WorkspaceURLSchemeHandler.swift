@@ -84,8 +84,12 @@ final class WorkspaceURLSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     private func respond(_ task: any WKURLSchemeTask, data: Data, mimeType: String) {
+        guard let url = task.request.url else {
+            task.didFailWithError(URLError(.badURL))
+            return
+        }
         let response = URLResponse(
-            url: task.request.url!,
+            url: url,
             mimeType: mimeType,
             expectedContentLength: data.count,
             textEncodingName: "utf-8"
