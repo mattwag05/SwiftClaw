@@ -177,7 +177,3 @@ struct ActivationSettingsView: View {
         }
     }
 }
-
-extension Notification.Name {
-    static let pxSummonCommandBar = Notification.Name("PXSummonCommandBar")
-}

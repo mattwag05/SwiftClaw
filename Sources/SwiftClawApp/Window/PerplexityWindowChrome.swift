@@ -39,8 +39,7 @@ struct PerplexityWindowChromeView: NSViewRepresentable {
         ] {
             guard let btn, let frame = btn.superview?.frame else { continue }
             var f = btn.frame
-            // Re-anchor to give a 16pt top inset.
-            f.origin.x = btn.tag == 0 ? 16 : f.origin.x // close stays at x=16 (default ~14)
+            // Re-anchor to give a 16pt top inset; leave x at AppKit's default.
             f.origin.y = frame.height - f.height - 16
             btn.frame = f
         }

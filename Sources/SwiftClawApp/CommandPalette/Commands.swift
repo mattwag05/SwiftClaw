@@ -63,7 +63,7 @@ enum Commands {
             icon: "command.circle",
             shortcut: "⌃⌘P",
             action: {
-                NotificationCenter.default.post(name: Notification.Name("PXSummonCommandBar"), object: nil)
+                NotificationCenter.default.post(name: .pxSummonCommandBar, object: nil)
                 onDismiss()
             }
         ))
@@ -75,7 +75,7 @@ enum Commands {
             icon: "text.cursor",
             shortcut: "⌘L",
             action: {
-                NotificationCenter.default.post(name: Notification.Name("PXFocusComposer"), object: nil)
+                NotificationCenter.default.post(name: .pxFocusComposer, object: nil)
                 onDismiss()
             }
         ))

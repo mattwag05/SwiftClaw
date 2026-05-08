@@ -132,6 +132,16 @@ public enum PXTheme {
     }
 }
 
+// MARK: - Notification names
+
+/// Cross-module notifications used to bridge SwiftUI views, the AppDelegate,
+/// and the Settings scene without explicit dependencies.
+public extension Notification.Name {
+    static let pxToggleSidebar = Notification.Name("PXToggleSidebar")
+    static let pxFocusComposer = Notification.Name("PXFocusComposer")
+    static let pxSummonCommandBar = Notification.Name("PXSummonCommandBar")
+}
+
 // MARK: - Wordmark
 
 /// SwiftClaw wordmark, mimicking the "perplexity.pro" lockup from the

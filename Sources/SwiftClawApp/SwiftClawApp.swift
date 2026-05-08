@@ -72,11 +72,6 @@ struct SwiftClawApp: App {
     }
 }
 
-extension Notification.Name {
-    static let pxToggleSidebar = Notification.Name("PXToggleSidebar")
-    static let pxFocusComposer = Notification.Name("PXFocusComposer")
-}
-
 // MARK: - App delegate (owns the global hotkey monitor + command bar)
 
 @MainActor

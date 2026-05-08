@@ -188,7 +188,6 @@ extension PerplexityChatPane {
                 placeholder: "Ask anything…",
                 onSend: { viewModel.send() },
                 onStop: { viewModel.cancelGeneration() },
-                onAttach: {},
                 onModeChange: { vm.sessionMode = $0 },
                 onToggleCanvas: { vm.canvasOpen.toggle() }
             )
@@ -331,7 +330,6 @@ extension PerplexityChatPane {
                 compact: true,
                 onSend: { viewModel.send() },
                 onStop: { viewModel.cancelGeneration() },
-                onAttach: {},
                 onModeChange: { vm.sessionMode = $0 },
                 onToggleCanvas: { vm.canvasOpen.toggle() }
             )

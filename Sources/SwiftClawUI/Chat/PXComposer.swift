@@ -16,7 +16,6 @@ public struct PXComposer: View {
     public var compact: Bool
     public var onSend: () -> Void
     public var onStop: () -> Void
-    public var onAttach: () -> Void
     public var onModeChange: (SessionMode) -> Void
     public var onToggleCanvas: () -> Void
 
@@ -37,7 +36,6 @@ public struct PXComposer: View {
         compact: Bool = false,
         onSend: @escaping () -> Void,
         onStop: @escaping () -> Void,
-        onAttach: @escaping () -> Void = {},
         onModeChange: @escaping (SessionMode) -> Void = { _ in },
         onToggleCanvas: @escaping () -> Void = {}
     ) {
@@ -50,7 +48,6 @@ public struct PXComposer: View {
         self.compact = compact
         self.onSend = onSend
         self.onStop = onStop
-        self.onAttach = onAttach
         self.onModeChange = onModeChange
         self.onToggleCanvas = onToggleCanvas
     }
@@ -137,9 +134,7 @@ public struct PXComposer: View {
                 focused = true
             }
         }
-        .onReceive(NotificationCenter.default.publisher(
-            for: Notification.Name("PXFocusComposer")
-        )) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .pxFocusComposer)) { _ in
             focused = true
         }
         .animation(PXTheme.Motion.quick, value: trimmed.isEmpty)

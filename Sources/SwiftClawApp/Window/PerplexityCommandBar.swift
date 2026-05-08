@@ -60,8 +60,12 @@ struct PerplexityCommandBar: View {
                 }
             }
         }
-        .onChange(of: viewModel.messages.count) { _, _ in updatePreview() }
-        .onChange(of: viewModel.streamingContentVersion) { _, _ in updatePreview() }
+        .onChange(of: viewModel.streamingContentVersion) { _, _ in
+            // streamingContentVersion fires on every chunk during generation.
+            // Skip the work when the bar isn't actively rendering progress.
+            guard phase == .working else { return }
+            updatePreview()
+        }
     }
 
     // MARK: - Phase bodies
@@ -77,7 +81,6 @@ struct PerplexityCommandBar: View {
             compact: true,
             onSend: send,
             onStop: {},
-            onAttach: {},
             onModeChange: { viewModel.sessionMode = $0 },
             onToggleCanvas: {}
         )
@@ -182,9 +185,7 @@ struct PerplexityCommandBar: View {
         localText = ""
         preview = ""
         phase = .working
-
-        viewModel.inputText = prompt
-        viewModel.send()
+        viewModel.send(prompt: prompt)
     }
 
     private func openInMainWindow() {

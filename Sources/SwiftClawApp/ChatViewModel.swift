@@ -169,13 +169,16 @@ final class ChatViewModel {
         memoryEnabled = ud.bool(forKey: "sc.memoryEnabled")
 
         Task {
-            await refreshSessions()
-            await refreshFolders()
-            await refreshAdapters()
+            // The first three are independent disk reads; run them
+            // concurrently so the empty-state UI fills in faster.
+            async let s: Void = refreshSessions()
+            async let f: Void = refreshFolders()
+            async let a: Void = refreshAdapters()
+            _ = await (s, f, a)
             await discoverModels()
             // Pre-warm the backend so the first message doesn't pay the full
-            // load latency. HTTP backend init is cheap; MLX backend will
-            // surface a loading overlay during weight load.
+            // load latency. HTTP backend init is cheap; MLX would block on
+            // weight load, so it stays lazy.
             if backendType == .http, backendState == .idle {
                 await loadBackend()
             }
@@ -288,8 +291,15 @@ final class ChatViewModel {
         let raw = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty, !isGenerating else { return }
         inputText = ""
+        send(prompt: raw)
+    }
 
-        // Per-message hints inferred from the composer's chip state.
+    /// Send a prompt that didn't come from `inputText` (e.g. the floating
+    /// command bar). Skips the input-text mutation that `send()` does.
+    func send(prompt raw: String) {
+        guard !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !isGenerating else { return }
+
         let webContext = UserDefaults.standard.bool(forKey: "sc.composerWebContext")
         let prelude = webContext
             ? "(Web context requested — please consult a web search tool if available.)\n\n"
@@ -303,7 +313,6 @@ final class ChatViewModel {
             }
             return
         }
-
         generationTask = Task { await doSend(text) }
     }
 
