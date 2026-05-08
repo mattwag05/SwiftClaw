@@ -120,10 +120,10 @@ final class ChatViewModel {
     var canvasSplit: Double = 0.5
 
     /// The file being written right now (for the Code tab live view).
-    var currentlyWritingFile: (path: String, partial: String)? = nil
+    var currentlyWritingFile: (path: String, partial: String)?
 
     /// Last file path written — Canvas observes this to trigger preview reload.
-    var canvasFileWrittenPath: String? = nil
+    var canvasFileWrittenPath: String?
 
     // MARK: Tool approval
 
@@ -173,6 +173,12 @@ final class ChatViewModel {
             await refreshFolders()
             await refreshAdapters()
             await discoverModels()
+            // Pre-warm the backend so the first message doesn't pay the full
+            // load latency. HTTP backend init is cheap; MLX backend will
+            // surface a loading overlay during weight load.
+            if backendType == .http, backendState == .idle {
+                await loadBackend()
+            }
         }
     }
 
@@ -202,7 +208,7 @@ final class ChatViewModel {
                     backendState = .error("Invalid URL: \(httpURL)")
                     return
                 }
-                let httpModel = modelId == "mlx-community/Qwen3.5-9B-MLX-4bit" ? "qwen2.5:7b" : modelId
+                let httpModel = modelId == "mlx-community/Qwen3.5-9B-MLX-4bit" ? "gemma4:latest" : modelId
                 rebuildHTTPBackend(model: httpModel)
                 backendState = .ready
                 Task { await discoverModels() }
@@ -223,6 +229,7 @@ final class ChatViewModel {
         generationTask = nil
         messages = []
         selectedSessionId = nil
+        lastTokenUsage = nil
 
         if backendState != .ready {
             await loadBackend()
@@ -264,7 +271,11 @@ final class ChatViewModel {
             memory: agentMemory,
             approvalDelegate: makeApprovalDelegate()
         )
-        currentMetadata = SessionMetadata(agentName: agentConfig.name, modelId: modelId)
+        currentMetadata = SessionMetadata(
+            agentName: agentConfig.name,
+            modelId: modelId,
+            mode: sessionMode
+        )
         selectedSessionId = sessionId
     }
 
@@ -274,9 +285,16 @@ final class ChatViewModel {
     }
 
     func send() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isGenerating else { return }
+        let raw = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, !isGenerating else { return }
         inputText = ""
+
+        // Per-message hints inferred from the composer's chip state.
+        let webContext = UserDefaults.standard.bool(forKey: "sc.composerWebContext")
+        let prelude = webContext
+            ? "(Web context requested — please consult a web search tool if available.)\n\n"
+            : ""
+        let text = prelude + raw
 
         guard session != nil else {
             generationTask = Task {
@@ -388,6 +406,7 @@ final class ChatViewModel {
         generationTask = nil
         messages = []
         selectedSessionId = id
+        lastTokenUsage = nil
 
         do {
             let restored = try await store.load(sessionId: id)
@@ -442,6 +461,10 @@ final class ChatViewModel {
             rebuildBubbles(from: restored.messages)
         } catch {
             errorMessage = "Failed to load session: \(error.localizedDescription)"
+            // Roll back selection so the UI doesn't think it's "in" a broken session.
+            selectedSessionId = nil
+            session = nil
+            currentMetadata = nil
         }
     }
 
@@ -458,6 +481,8 @@ final class ChatViewModel {
                 selectedSessionId = nil
                 session = nil
                 messages = []
+                currentMetadata = nil
+                lastTokenUsage = nil
             }
             await refreshSessions()
         } catch {
@@ -725,7 +750,21 @@ final class ChatViewModel {
     }
 
     private func doSend(_ text: String) async {
-        guard let agentSession = session else { return }
+        guard let agentSession = session else {
+            // newChat must have failed (e.g., backend couldn't load). Show
+            // the user's message and a useful error rather than silently
+            // dropping the turn.
+            messages.append(ChatBubble(kind: .user(text)))
+            let why: String
+            if case let .error(msg) = backendState {
+                why = "Backend error: \(msg)"
+            } else {
+                why = "Couldn't start a session — check backend settings (Settings → General)."
+            }
+            messages.append(ChatBubble(kind: .warning(why)))
+            isGenerating = false
+            return
+        }
         isGenerating = true
         messages.append(ChatBubble(kind: .user(text)))
 
@@ -851,8 +890,25 @@ final class ChatViewModel {
                     }
                 }
             }
+            // If we exited the loop via cancellation (Task.isCancelled break),
+            // the .done case never fires — finalize any half-rendered
+            // streaming bubble here so it doesn't render "forever streaming".
+            if Task.isCancelled, let id = streamingBubbleId,
+               let idx = messages.lastIndex(where: { $0.id == id })
+            {
+                if currentText.isEmpty, currentThinking == nil {
+                    messages.remove(at: idx)
+                } else {
+                    messages[idx] = ChatBubble(id: id, kind: .assistant(currentText))
+                }
+            }
             // Auto-save after each turn (skip if cancelled)
-            if !Task.isCancelled, let meta = currentMetadata {
+            if !Task.isCancelled, var meta = currentMetadata {
+                // Pick up live edits to mode / canvas before persisting.
+                meta.mode = sessionMode
+                meta.canvasSplit = canvasSplit
+                meta.updatedAt = Date()
+                currentMetadata = meta
                 try? await agentSession.save(to: store, metadata: meta)
                 await refreshSessions()
             }

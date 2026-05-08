@@ -40,21 +40,31 @@ public struct GemmaMessageBubble: View {
                 .padding(.leading, 44)
 
         case let .warning(msg):
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#fbbf24"))
                 Text(msg)
-                    .font(.caption)
-                    .foregroundStyle(GemmaForeground.secondary)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(GemmaForeground.primary)
+                    .textSelection(.enabled)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(hex: "#fbbf24").opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color(hex: "#fbbf24").opacity(0.25), lineWidth: 1)
+            )
             .padding(.leading, 44)
         }
     }
 
     // MARK: - User bubble
 
-    @ViewBuilder
     private func userBubble(text: String) -> some View {
         HStack {
             Spacer(minLength: 60)
@@ -81,7 +91,6 @@ public struct GemmaMessageBubble: View {
 
     // MARK: - Assistant bubble
 
-    @ViewBuilder
     private func assistantBubble(text: String, isStreaming: Bool, thinking: String?) -> some View {
         HStack(alignment: .top, spacing: 10) {
             avatarView
@@ -90,14 +99,21 @@ public struct GemmaMessageBubble: View {
                     thinkingSection(thinking)
                 }
                 if !text.isEmpty || isStreaming {
-                    HStack(alignment: .bottom, spacing: 2) {
-                        Text(text)
-                            .font(.body)
-                            .foregroundStyle(GemmaForeground.primary)
-                            .textSelection(.enabled)
-                        if isStreaming {
-                            StreamingCaret()
-                                .foregroundStyle(GemmaForeground.secondary)
+                    if text.isEmpty, isStreaming, (thinking ?? "").isEmpty {
+                        // Pre-first-token state — show pulsing dots so the user
+                        // knows the model is actually working.
+                        ThinkingDotsView()
+                            .padding(.vertical, 2)
+                    } else {
+                        HStack(alignment: .bottom, spacing: 2) {
+                            Text(text)
+                                .font(.body)
+                                .foregroundStyle(GemmaForeground.primary)
+                                .textSelection(.enabled)
+                            if isStreaming {
+                                StreamingCaret()
+                                    .foregroundStyle(GemmaForeground.secondary)
+                            }
                         }
                     }
                 }
@@ -128,7 +144,6 @@ public struct GemmaMessageBubble: View {
 
     // MARK: - Thinking section
 
-    @ViewBuilder
     private func thinkingSection(_ thinking: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Button {

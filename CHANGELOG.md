@@ -2,6 +2,64 @@
 
 All notable changes to SwiftClaw are documented here.
 
+## [5.2] — 2026-05-08
+
+### Perplexity Computer-style UI overhaul
+
+**[feature]** New `PXTheme` namespace (`Sources/SwiftClawUI/Theme/PerplexityTheme.swift`) — dark-first palette (`#0c0c0d` window → `#1a1a1d` surfaces), teal `#1ea7b5` accent, geometry/motion tokens, italic-serif `PXWordmark` lockup.
+
+**[feature]** `PerplexityRoot` (`Sources/SwiftClawApp/Layout/PerplexityRoot.swift`) — 2-column layout replacing the legacy 3-column `NavigationSplitView`. Hosts `PerplexitySidebar` + dynamic main pane that switches between `PerplexityChatPane`, `SpacesPane`, `ArtifactsPane`, `CustomizePane` based on `NavSelection`. Reveal-sidebar floating button (with traffic-light clearance) when sidebar is collapsed via ⌘\.
+
+**[feature]** `PerplexitySidebar` — single-column dark sidebar with prominent "+ New Thread" button, four nav items (All Threads / Spaces / Artifacts / Customize), inline new-space link, search field, "RECENT" group with Today/Yesterday headers and polite empty state, monospaced backend·model footer, hover-aware `NavRow`/`SessionRow` (`Sources/SwiftClawApp/Layout/SidebarRows.swift`).
+
+**[feature]** `PerplexityChatPane` — empty state with centered wordmark + state-aware model byline (live status dot: success/warning/danger/idle + label) + composer + keyboard shortcut hint row + suggestion chips. Active state: top bar with usage indicator, stop button, top-right new-thread "+", transcript via `GemmaMessageList` (24pt padding, bounded width), and pinned composer well with chatBg gradient fade-in.
+
+**[feature]** `PXComposer` (`Sources/SwiftClawUI/Chat/PXComposer.swift`) — pill-shaped input using `TextField(axis:.vertical)`. Action chip row: paperclip → `AttachPopoverView` (clipboard preview + file picker + screenshot/window placeholders), globe → web-context toggle (persisted, injects per-message prompt prelude), at → `MentionPopoverView` (active app name, clipboard, today's date/time as natural-language snippets), Chat/Build mode menu, mic → coming-soon popover, circular send button with pulse + glow when text non-empty. Cmd+L focuses via NotificationCenter; ↩ sends, ⇧↩ newlines.
+
+**[feature]** `PerplexityCommandBar` + `CommandBarController` + `GlobalHotkeyMonitor` — floating `NSPanel` HUD-blur surface summoned by double-Command gesture (Carbon-NSEvent flagsChanged tap detector) or ⌃⌘P Carbon hotkey fallback. State machine: idle (composer) → working (pulsing dot + live preview + stop) → done (auto-dismiss after 4.5s). Avoids ⌥⌘Space because it conflicts with Finder's "Show Find".
+
+**[feature]** `HotkeyHintOverlay` — first-launch compact pill teaching the double-Command gesture (matches video frame_20). Auto-fades after 30s; persists `sc.hasSeenHotkeyHint` so it never returns.
+
+**[feature]** `SpacesPane` / `ArtifactsPane` / `CustomizePane` — distinct content surfaces for each non-chat sidebar item. `ArtifactsPane` scans `~/.swiftclaw/workspaces/` and renders a most-recently-touched grid. `CustomizePane` exposes theme/font-scale/suggestion-chip/serif-wordmark/activation-trigger toggles, all wired to live UI.
+
+**[feature]** `ActivationSettingsView` — new Settings → Activation tab with command-bar trigger picker, default-mode dropdown, suggest-open-docs toggle, prevent-system-sleep toggle, "Show command bar now" tester, and a yellow accessibility callout (with "Open System Settings" + "Re-check") when `AXIsProcessTrusted()` is false so users know why the gesture isn't firing.
+
+**[feature]** `PerplexityWindowChrome` — hidden titlebar, inset traffic lights, behind-window vibrancy (dark mode) / solid (light mode). Default size 1180×760, min 920×600.
+
+**[feature]** Command palette additions (`Commands.swift`): "Summon Command Bar" (⌃⌘P), "Focus Composer" (⌘L), eight most-recent threads for fuzzy thread-switching with ⌘K + typing.
+
+**[feature]** App default theme is now dark; HTTP backend default model is `gemma4:latest` (matches `feat/gemma-port` branch and the typical Ollama install on this Mac).
+
+**[feature]** Backend pre-warm — HTTP backend now initializes during `ChatViewModel.init`'s startup task instead of lazily on first send; the green "ready" status dot appears before the user types.
+
+**[bug]** `ChatViewModel.send()` no longer silently drops a turn when `newChat()`'s `loadBackend` fails — appends the user message and a warning bubble pointing to Settings → General.
+
+**[bug]** `SessionMetadata.mode` was defaulting to `.chat` in `newChat()` regardless of the user's current `sessionMode` — Build mode never persisted on save/reload. Now passes the live `sessionMode`.
+
+**[bug]** Auto-save persisted stale metadata — `mode` / `canvasSplit` / `updatedAt` now refresh from live state on every save and write back to `currentMetadata`.
+
+**[bug]** `lastTokenUsage` was sticky across session changes — empty-state usage indicator showed the previous session's token count. Reset in `newChat`/`selectSession`/`deleteSession`.
+
+**[bug]** `selectSession` load failure left `selectedSessionId` pointing at the broken session id — UI looked stuck. Now rolls back selection + clears session/metadata on error.
+
+**[bug]** Streaming bubble leaked as forever-streaming after cancellation — when `for try await` exited via `Task.isCancelled` break, the `.done` case never fired and the catch block didn't fire without an error, so the in-progress assistant bubble stayed in `isStreaming: true` state forever. Now finalized to `.assistant(currentText)` (or removed if empty) before `doSend` exits.
+
+**[bug]** Sidebar footer double-truncated to "qw…codin…" because internal trim added "…" then SwiftUI's `.middle` truncation added "…" again. Now uses tail truncation only.
+
+**[bug]** `⌥⌘Space` Carbon hotkey conflicted with Finder's "Show Find" globally — replaced with `⌃⌘P` (no known system binding).
+
+**[quality]** Polished warning bubble — amber-tinted card with border instead of a thin caption row.
+
+**[quality]** Consolidated keyboard shortcuts — removed three duplicate `⌘N` declarations, two duplicate `⌘\` declarations, and the hidden Button workaround. The `⌘\` chain now flows menu → notification → root listener.
+
+**[quality]** Pre-token thinking dots (`ThinkingDotsView`) replace an invisible caret when streaming starts with no text yet.
+
+**[quality]** Removed `ContentView.swift`, `ChatDetailView.swift`, `Layout/SidebarNavView.swift`, `Layout/SessionListColumn.swift` — superseded by the new `Perplexity*` layout.
+
+**Summary:** 17 new files, 7 deleted, 10 real bugs fixed, full Perplexity Computer-style UI/UX rebuild, 460/460 tests passing.
+
+---
+
 ## [5.1] — 2026-05-04
 
 ### Credential Proxy

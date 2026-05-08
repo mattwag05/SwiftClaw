@@ -41,10 +41,13 @@ public struct GemmaMessageList: View {
                             value: messages.count
                         )
                         .id(bubble.id)
+                        .frame(maxWidth: GemmaLayout.messageMaxWidth, alignment: .leading)
+                        .frame(maxWidth: .infinity)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+                .padding(.bottom, 24)
             }
             .onChange(of: messages.count) { _, _ in
                 if let last = messages.last {

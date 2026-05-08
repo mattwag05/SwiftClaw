@@ -27,6 +27,7 @@ struct SettingsView: View {
     private func detail(for category: SettingsCategory) -> some View {
         switch category {
         case .general: GeneralSettingsView()
+        case .activation: ActivationSettingsView()
         case .model: ModelSettingsView()
         case .tools: ToolsSettingsView()
         case .memory: MemorySettingsView()
