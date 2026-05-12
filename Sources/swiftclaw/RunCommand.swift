@@ -54,6 +54,9 @@ struct RunCommand: AsyncParsableCommand {
     @Option(name: [.customLong("cache-mode")], help: "Prompt caching mode: none, anthropic, openai (HTTP backend only).")
     var cacheModeStr: String?
 
+    @Flag(name: [.customLong("no-credential-proxy")], help: "Disable credential redaction (for debugging — tool output shown verbatim).")
+    var noCredentialProxy: Bool = false
+
     mutating func run() async throws {
         print("SwiftClaw \(SwiftClawVersion.version)")
 
@@ -149,12 +152,18 @@ struct RunCommand: AsyncParsableCommand {
             }
         }
 
+        let proxy = config.makeCredentialProxy(disableProxy: noCredentialProxy)
+        if !noCredentialProxy, config.credentialProxyEnabled {
+            print("Credential proxy enabled.\n")
+        }
+
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
             systemPrompt: basePrompt,
             tools: tools,
             modelId: model,
-            generationConfig: GenerationConfig(maxTokens: maxTokens)
+            generationConfig: GenerationConfig(maxTokens: maxTokens),
+            credentialProxy: proxy
         )
         let agent = Agent(configuration: agentConfig)
 

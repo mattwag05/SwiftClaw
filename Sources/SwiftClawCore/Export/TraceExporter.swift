@@ -3,20 +3,19 @@ import Foundation
 /// Exports SwiftClaw session messages to JSONL in OpenAI ChatML format
 /// for use with MLX fine-tuning scripts and HuggingFace tooling.
 public struct TraceExporter: Sendable {
-
     // MARK: - Public API
 
     /// Encode a single session's messages as one JSONL line (no trailing newline).
-    public static func exportLine(messages: [Message]) throws -> Data {
-        try exportAll([messages])
+    public static func exportLine(messages: [Message], proxy: any CredentialProxy = NoOpCredentialProxy()) throws -> Data {
+        try exportAll([messages], proxy: proxy)
     }
 
     /// Encode multiple sessions as JSONL — one line per session, separated by `\n`.
-    public static func exportAll(_ batches: [[Message]]) throws -> Data {
+    public static func exportAll(_ batches: [[Message]], proxy: any CredentialProxy = NoOpCredentialProxy()) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let lines = try batches.map { messages -> Data in
-            try encoder.encode(ChatMLLine(messages: messages.map(ChatMLMessage.init)))
+            try encoder.encode(ChatMLLine(messages: messages.map { ChatMLMessage($0, proxy: proxy) }))
         }
         return Data(lines.joined(separator: Data("\n".utf8)))
     }
@@ -34,17 +33,18 @@ private struct ChatMLMessage: Encodable {
     let tool_calls: [ChatMLToolCall]?
     let tool_call_id: String?
 
-    init(_ message: Message) {
-        self.role = message.role.rawValue
-        self.tool_call_id = message.toolCallId
+    init(_ message: Message, proxy: any CredentialProxy) {
+        role = message.role.rawValue
+        tool_call_id = message.toolCallId
 
         if let calls = message.toolCalls, !calls.isEmpty {
             // Assistant messages that issue tool calls have null content per OpenAI spec.
-            self.content = message.content.isEmpty ? nil : message.content
-            self.tool_calls = calls.map(ChatMLToolCall.init)
+            let raw = message.content.isEmpty ? nil : message.content
+            content = raw.map { proxy.scrub($0) }
+            tool_calls = calls.map { ChatMLToolCall($0, proxy: proxy) }
         } else {
-            self.content = message.content
-            self.tool_calls = nil
+            content = proxy.scrub(message.content)
+            tool_calls = nil
         }
     }
 
@@ -67,9 +67,9 @@ private struct ChatMLToolCall: Encodable {
     let type: String = "function"
     let function: ChatMLFunction
 
-    init(_ request: ToolCallRequest) {
-        self.id = request.id
-        self.function = ChatMLFunction(name: request.name, arguments: request.arguments)
+    init(_ request: ToolCallRequest, proxy: any CredentialProxy) {
+        id = request.id
+        function = ChatMLFunction(name: request.name, arguments: proxy.scrub(request.arguments))
     }
 }
 

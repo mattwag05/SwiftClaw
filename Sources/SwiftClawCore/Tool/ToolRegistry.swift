@@ -3,8 +3,9 @@ import Foundation
 /// Lookup table mapping tool names to their implementations.
 public struct ToolRegistry: Sendable {
     private let tools: [String: any SwiftClawTool]
+    private let proxy: any CredentialProxy
 
-    public init(tools: [any SwiftClawTool]) {
+    public init(tools: [any SwiftClawTool], proxy: any CredentialProxy = NoOpCredentialProxy()) {
         var dict: [String: any SwiftClawTool] = [:]
         for tool in tools {
             if dict[tool.name] != nil {
@@ -15,6 +16,7 @@ public struct ToolRegistry: Sendable {
             }
         }
         self.tools = dict
+        self.proxy = proxy
     }
 
     public var definitions: [ToolDefinition] {
@@ -33,8 +35,10 @@ public struct ToolRegistry: Sendable {
         guard let tool = tools[name] else {
             return .failure("Unknown tool: \(name)")
         }
+        let scrubbedArgs = proxy.scrub(arguments)
         do {
-            return try await tool.execute(arguments: arguments)
+            let result = try await tool.execute(arguments: scrubbedArgs)
+            return result.scrubbed(with: proxy)
         } catch {
             return .failure(SwiftClawError.toolExecutionFailed(toolName: name, detail: error.localizedDescription).errorDescription ?? error.localizedDescription)
         }

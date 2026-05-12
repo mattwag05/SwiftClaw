@@ -5,18 +5,21 @@ public struct AgentConfiguration: Sendable {
     public let tools: [any SwiftClawTool]
     public let modelId: String
     public let generationConfig: GenerationConfig
+    public let credentialProxy: any CredentialProxy
 
     public init(
         name: String,
         systemPrompt: String,
         tools: [any SwiftClawTool],
         modelId: String,
-        generationConfig: GenerationConfig = GenerationConfig()
+        generationConfig: GenerationConfig = GenerationConfig(),
+        credentialProxy: any CredentialProxy = NoOpCredentialProxy()
     ) {
         self.name = name
         self.systemPrompt = systemPrompt
         self.tools = tools
         self.modelId = modelId
         self.generationConfig = generationConfig
+        self.credentialProxy = credentialProxy
     }
 }
