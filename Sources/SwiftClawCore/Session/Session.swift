@@ -6,20 +6,22 @@ import Foundation
 /// Session is an actor to protect the mutable `messages` array
 /// under Swift 6 strict concurrency.
 public actor Session {
-    private var messages: [Message]
-    private let agent: Agent
-    private let backend: any ModelBackend
-    private let config: SessionConfiguration
+    // `internal` (not private) so Session+XMLDispatch.swift can access them.
+    // Actor isolation still protects them from concurrent mutation.
+    var messages: [Message]
+    let agent: Agent
+    let backend: any ModelBackend
+    let config: SessionConfiguration
     public let sessionId: String?
-    private var isRunning: Bool = false
-    private let approvalDelegate: (any ToolApprovalDelegate)?
-    private let processMonitor: ProcessMonitor?
+    var isRunning: Bool = false
+    let approvalDelegate: (any ToolApprovalDelegate)?
+    let processMonitor: ProcessMonitor?
 
     // Memory support (optional)
-    private let memory: (any MemoryProvider)?
-    private let consolidator: MemoryConsolidator
-    private let compressor: ContextCompressor
-    private var turnsSinceConsolidation: Int = 0
+    let memory: (any MemoryProvider)?
+    let consolidator: MemoryConsolidator
+    let compressor: ContextCompressor
+    var turnsSinceConsolidation: Int = 0
 
     /// Create a new session with a fresh conversation history.
     public init(
@@ -100,14 +102,25 @@ public actor Session {
                     return
                 }
                 do {
-                    try await self.runLoop(
-                        prompt: prompt,
-                        agent: agent,
-                        backend: backend,
-                        config: config,
-                        approvalDelegate: approvalDelegate,
-                        continuation: continuation
-                    )
+                    if backend.preferredToolProtocol == .xml {
+                        try await self.runXMLLoop(
+                            prompt: prompt,
+                            agent: agent,
+                            backend: backend,
+                            config: config,
+                            approvalDelegate: approvalDelegate,
+                            continuation: continuation
+                        )
+                    } else {
+                        try await self.runLoop(
+                            prompt: prompt,
+                            agent: agent,
+                            backend: backend,
+                            config: config,
+                            approvalDelegate: approvalDelegate,
+                            continuation: continuation
+                        )
+                    }
                     await self.setRunning(false)
                     continuation.finish()
                 } catch {
@@ -118,8 +131,8 @@ public actor Session {
         }
     }
 
-    /// The core agentic loop.
-    private func runLoop(
+    /// The core agentic loop (JSON tool protocol path).
+    func runLoop(
         prompt: String,
         agent: Agent,
         backend: any ModelBackend,
@@ -199,7 +212,8 @@ public actor Session {
             // Streaming generation with think-block detection.
             // Text chunks are buffered until we know if they're thinking or real content.
             // Buffering per-chunk (not concatenated) so each can be flushed individually.
-            var bufferedChunks: [String] = [] // Pre-</think> chunks, waiting for classification
+            var bufferedChunks: [String] = [] // kept as [String] so each can be flushed individually on the no-think path
+            var combinedBuffer = "" // avoids O(n²) joined() on every chunk
             var postThinkText = "" // Confirmed real text (after </think>)
             var sawThinkEnd = false
             var accumulatedToolCalls: [ToolCallRequest] = []
@@ -223,16 +237,16 @@ public actor Session {
                         }
                     } else {
                         bufferedChunks.append(text)
-                        // Check if </think> appeared anywhere in the accumulated buffer
-                        let combined = bufferedChunks.joined()
-                        if let range = combined.range(of: "</think>") {
+                        combinedBuffer += text
+                        if let range = combinedBuffer.range(of: "</think>") {
                             sawThinkEnd = true
-                            var thinkPart = String(combined[combined.startIndex ..< range.lowerBound])
+                            var thinkPart = String(combinedBuffer[combinedBuffer.startIndex ..< range.lowerBound])
                             thinkPart = thinkPart
                                 .replacingOccurrences(of: "<think>", with: "")
                                 .trimmingCharacters(in: .whitespacesAndNewlines)
-                            let afterThink = String(combined[range.upperBound...])
+                            let afterThink = String(combinedBuffer[range.upperBound...])
                             bufferedChunks = []
+                            combinedBuffer = ""
                             if !thinkPart.isEmpty {
                                 continuation.yield(.thinkingDelta(thinkPart))
                             }
@@ -263,7 +277,7 @@ public actor Session {
                         continuation.yield(.textDelta(cleaned))
                     }
                 }
-                postThinkText = bufferedChunks.joined()
+                postThinkText = combinedBuffer
             }
 
             // Build clean final text (same cleanup as the non-streaming convenience method)
@@ -386,12 +400,12 @@ public actor Session {
         continuation.yield(.done)
     }
 
-    private func setRunning(_ value: Bool) {
+    func setRunning(_ value: Bool) {
         isRunning = value
     }
 
     /// Strip tool-call XML blocks from a text chunk (Qwen3.5 text-injection format).
-    private func stripToolCallXML(_ text: String) -> String {
+    func stripToolCallXML(_ text: String) -> String {
         var result = text
         if result.contains("<tool_call>") {
             result = result.replacingOccurrences(

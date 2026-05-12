@@ -49,9 +49,33 @@ enum Commands {
             title: "Toggle Sidebar",
             subtitle: "Navigation",
             icon: "sidebar.left",
-            shortcut: "⌃⌘S",
+            shortcut: "⌘\\",
             action: {
                 onToggleSidebar()
+                onDismiss()
+            }
+        ))
+
+        items.append(.init(
+            id: "nav.summonCommandBar",
+            title: "Summon Command Bar",
+            subtitle: "Navigation",
+            icon: "command.circle",
+            shortcut: "⌃⌘P",
+            action: {
+                NotificationCenter.default.post(name: .pxSummonCommandBar, object: nil)
+                onDismiss()
+            }
+        ))
+
+        items.append(.init(
+            id: "nav.focusComposer",
+            title: "Focus Composer",
+            subtitle: "Navigation",
+            icon: "text.cursor",
+            shortcut: "⌘L",
+            action: {
+                NotificationCenter.default.post(name: .pxFocusComposer, object: nil)
                 onDismiss()
             }
         ))
@@ -116,6 +140,21 @@ enum Commands {
                 icon: "arrow.clockwise",
                 action: {
                     viewModel.sendSuggestion(lastUserText)
+                    onDismiss()
+                }
+            ))
+        }
+
+        // MARK: Recent threads
+
+        for summary in viewModel.sessions.prefix(8) {
+            items.append(.init(
+                id: "thread.\(summary.sessionId)",
+                title: summary.displayTitle,
+                subtitle: "Thread",
+                icon: summary.isPinned ? "pin.fill" : "tray",
+                action: {
+                    viewModel.selectedSessionId = summary.sessionId
                     onDismiss()
                 }
             ))

@@ -83,6 +83,36 @@ SwiftClaw is a **macOS-first, Swift-native AI agent framework** that runs fully 
 
 ## 5. Release Plan
 
+### 5.0 v6.0 — Gemma Chat port (in progress, branch `feat/gemma-port`)
+
+Bringing `ammaarreshi/gemma-chat`'s Build-mode pipeline + visual language into SwiftClaw.
+Source: https://github.com/ammaarreshi/gemma-chat · Plan: `.claude/plans/please-port-the-features-glittery-fog.md`
+
+**Phases:**
+
+- [ ] **Ph 0** — Branch scaffolding + PRD + GitHub issues
+- [ ] **Ph 1** — Design tokens (ink palette), Typography update, Animation helpers, hidden-titlebar window chrome
+- [ ] **Ph 2** — Hybrid tool protocol: `XMLActionParser`, `XMLActionFormatter`, `Session+XMLDispatch`; MLXBackend → XML, HTTPBackend → JSON
+- [ ] **Ph 3** — Build-mode primitives: `SessionMode`, `WorkspaceManager`, `WorkspaceSandbox`, `BashAllowlist`, `ToolApprovalNotifier`
+- [ ] **Ph 4** — Tool ports: `WriteFileTool`, `ReadFileTool`, `EditFileTool`, `ListFilesTool`, `DeleteFileTool`, `RunBashTool`, `OpenPreviewTool`; configurable `SearchProvider` with 6 backends; `FetchURLTool`; `CalcTool`
+- [ ] **Ph 5** — Canvas UI: `CanvasView`, `PreviewTab` (WKURLSchemeHandler), `CodeTab`, `FilesTab`, `WorkspaceURLSchemeHandler`; HSplitView integration in ContentView
+- [ ] **Ph 6** — Chat shell visual port: `HeaderBar`, `MessageList` (stagger entry), `MessageBubble`, `ToolCallCard`, `ActivityBar`, `ShimmerText`, `StreamingCaret`, `Composer`, `EmptyState`, `ReasoningCollapsible`
+- [ ] **Ph 7** — System prompts: `SystemPromptBuilder`, `ChatSystemPrompt`, `BuildSystemPrompt`, per-session override
+- [ ] **Ph 8** — First-run setup wizard: `SetupCoordinator`, `WelcomeView`, `MLXModelPickerView`, `HTTPConfigView`, `StageList`
+- [ ] **Ph 9** — WhisperKit voice input: mic button in Composer, `WhisperRecorder`, `WhisperTranscriber`
+- [ ] **Ph 10** — CLI Build mode parity: `--build` + `--workspace` flags, file-diff stdout, stderr approval flow
+- [ ] **Ph 11** — Markdown + syntax highlighting: `swift-markdown-ui` + tree-sitter highlighter (Runestone)
+- [ ] **Ph 12** — Memory tagging for Build sessions, Settings panes expanded for all new features
+
+**Key decisions locked:**
+- Build mode: Chat + Build modes, Canvas (HSplitView inside detail), workspaces at `~/.swiftclaw/workspaces/<id>/` via WKURLSchemeHandler
+- Tool protocol: MLXBackend → XML actions; HTTPBackend → JSON tool_calls (backend-driven)
+- Safety: workspace-scoped tools auto-approve; `run_bash` → allowlist or system-notification prompt with [Allow once / Session / Permanent / Deny]
+- Voice: WhisperKit (Core ML, on-device)
+- Web search: configurable `SearchProvider` (Tavily / Serper / Kagi / SearXNG / Jina / Upstash)
+- Animations: high-fidelity SwiftUI-native equivalents of Gemma's cubic-bezier(0.16, 1, 0.3, 1)
+- Markdown: `swift-markdown-ui` + Runestone (tree-sitter) highlighting
+
 ### 5.1 v4.9 — Model picker & discovery ✓
 
 - [x] Ship `DiscoveredModel` + scanners (Ollama, OpenAI-compatible, MLX cache).

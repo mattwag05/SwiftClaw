@@ -20,4 +20,8 @@ public enum SessionEvent: Sendable {
     case warning(String)
     /// Memory consolidation ran and wrote new facts.
     case memoryUpdated(keys: [String])
+    /// A Build-mode file is being written (Canvas streams this during the write).
+    case fileStreaming(path: String, partial: String)
+    /// A Build-mode file write completed.
+    case fileWritten(path: String)
 }

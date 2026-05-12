@@ -108,6 +108,23 @@ final class ChatViewModel {
 
     var embeddingState: EmbeddingState = .idle
 
+    // MARK: Build mode + Canvas
+
+    /// The mode of the currently selected session.
+    var sessionMode: SessionMode = .chat
+
+    /// Whether the Canvas pane is open (Build mode only).
+    var canvasOpen: Bool = false
+
+    /// HSplitView divider position (0.0–1.0). Persisted per-session.
+    var canvasSplit: Double = 0.5
+
+    /// The file being written right now (for the Code tab live view).
+    var currentlyWritingFile: (path: String, partial: String)?
+
+    /// Last file path written — Canvas observes this to trigger preview reload.
+    var canvasFileWrittenPath: String?
+
     // MARK: Tool approval
 
     var toolApprovalOverrides: [String: Bool] = [:]
@@ -122,6 +139,12 @@ final class ChatViewModel {
     private var generationTask: Task<Void, Never>?
     private var currentMetadata: SessionMetadata?
     private var agentMemory: (any MemoryProvider)?
+    let workspaceManager: WorkspaceManager = {
+        if let wm = (try? WorkspaceManager()) ?? (try? WorkspaceManager(baseDir: URL(fileURLWithPath: NSTemporaryDirectory()))) {
+            return wm
+        }
+        fatalError("Cannot create WorkspaceManager: both default and temp-dir attempts failed")
+    }()
 
     init() {
         // FileSessionStore.init can throw only on directory creation failure;
@@ -146,10 +169,19 @@ final class ChatViewModel {
         memoryEnabled = ud.bool(forKey: "sc.memoryEnabled")
 
         Task {
-            await refreshSessions()
-            await refreshFolders()
-            await refreshAdapters()
+            // The first three are independent disk reads; run them
+            // concurrently so the empty-state UI fills in faster.
+            async let s: Void = refreshSessions()
+            async let f: Void = refreshFolders()
+            async let a: Void = refreshAdapters()
+            _ = await (s, f, a)
             await discoverModels()
+            // Pre-warm the backend so the first message doesn't pay the full
+            // load latency. HTTP backend init is cheap; MLX would block on
+            // weight load, so it stays lazy.
+            if backendType == .http, backendState == .idle {
+                await loadBackend()
+            }
         }
     }
 
@@ -175,18 +207,12 @@ final class ChatViewModel {
                 Task { await discoverModels() }
 
             case .http:
-                guard let url = URL(string: httpURL) else {
+                guard URL(string: httpURL) != nil else {
                     backendState = .error("Invalid URL: \(httpURL)")
                     return
                 }
-                let httpModel = modelId == "mlx-community/Qwen3.5-9B-MLX-4bit" ? "qwen2.5:7b" : modelId
-                let config = (try? SwiftClawConfig.load()) ?? .default
-                backend = HTTPBackend(
-                    baseURL: url,
-                    model: httpModel,
-                    apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey,
-                    cacheMode: config.cacheMode
-                )
+                let httpModel = modelId == "mlx-community/Qwen3.5-9B-MLX-4bit" ? "gemma4:latest" : modelId
+                rebuildHTTPBackend(model: httpModel)
                 backendState = .ready
                 Task { await discoverModels() }
             }
@@ -198,10 +224,15 @@ final class ChatViewModel {
     // MARK: - Chat
 
     func newChat() async {
+        if let pending = pendingApproval {
+            pendingApproval = nil
+            pending.continuation.resume(returning: false)
+        }
         generationTask?.cancel()
         generationTask = nil
         messages = []
         selectedSessionId = nil
+        lastTokenUsage = nil
 
         if backendState != .ready {
             await loadBackend()
@@ -215,11 +246,7 @@ final class ChatViewModel {
         if let memStore = agentMemory {
             tools += MemoryToolFactory.allTools(store: memStore)
         }
-        var basePrompt = """
-        You are Sysop, a macOS assistant. You have access to tools for system administration, \
-        file operations (sandboxed), environment inspection, and optionally pippin CLI wrappers \
-        for Apple Mail and Voice Memos. Be concise and accurate.
-        """
+        var basePrompt = await buildBasePrompt(mode: sessionMode, sessionId: sessionId)
         await applySkills(config: config, tools: &tools, prompt: &basePrompt)
         let agentConfig = AgentConfiguration(
             name: "SysopAgent",
@@ -247,7 +274,11 @@ final class ChatViewModel {
             memory: agentMemory,
             approvalDelegate: makeApprovalDelegate()
         )
-        currentMetadata = SessionMetadata(agentName: agentConfig.name, modelId: modelId)
+        currentMetadata = SessionMetadata(
+            agentName: agentConfig.name,
+            modelId: modelId,
+            mode: sessionMode
+        )
         selectedSessionId = sessionId
     }
 
@@ -257,9 +288,23 @@ final class ChatViewModel {
     }
 
     func send() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isGenerating else { return }
+        let raw = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, !isGenerating else { return }
         inputText = ""
+        send(prompt: raw)
+    }
+
+    /// Send a prompt that didn't come from `inputText` (e.g. the floating
+    /// command bar). Skips the input-text mutation that `send()` does.
+    func send(prompt raw: String) {
+        guard !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !isGenerating else { return }
+
+        let webContext = UserDefaults.standard.bool(forKey: "sc.composerWebContext")
+        let prelude = webContext
+            ? "(Web context requested — please consult a web search tool if available.)\n\n"
+            : ""
+        let text = prelude + raw
 
         guard session != nil else {
             generationTask = Task {
@@ -268,7 +313,6 @@ final class ChatViewModel {
             }
             return
         }
-
         generationTask = Task { await doSend(text) }
     }
 
@@ -362,10 +406,16 @@ final class ChatViewModel {
 
     func selectSession(id: String) async {
         guard id != selectedSessionId else { return }
+        // Resume any pending approval before switching — avoids leaking a suspended continuation.
+        if let pending = pendingApproval {
+            pendingApproval = nil
+            pending.continuation.resume(returning: false)
+        }
         generationTask?.cancel()
         generationTask = nil
         messages = []
         selectedSessionId = id
+        lastTokenUsage = nil
 
         do {
             let restored = try await store.load(sessionId: id)
@@ -378,7 +428,12 @@ final class ChatViewModel {
             if let memStore = agentMemory {
                 tools += MemoryToolFactory.allTools(store: memStore)
             }
-            var basePrompt = "You are Sysop, a macOS assistant."
+            let restoredMode = restored.metadata.mode
+            var basePrompt = await buildBasePrompt(
+                mode: restoredMode,
+                sessionId: id,
+                systemPromptOverride: restored.metadata.systemPromptOverride
+            )
             await applySkills(config: config, tools: &tools, prompt: &basePrompt)
             let agentConfig = AgentConfiguration(
                 name: restored.metadata.agentName,
@@ -408,9 +463,17 @@ final class ChatViewModel {
                 approvalDelegate: makeApprovalDelegate()
             )
             currentMetadata = restored.metadata
+            sessionMode = restored.metadata.mode
+            canvasSplit = restored.metadata.canvasSplit
+            canvasOpen = false
+            canvasFileWrittenPath = nil
             rebuildBubbles(from: restored.messages)
         } catch {
             errorMessage = "Failed to load session: \(error.localizedDescription)"
+            // Roll back selection so the UI doesn't think it's "in" a broken session.
+            selectedSessionId = nil
+            session = nil
+            currentMetadata = nil
         }
     }
 
@@ -418,9 +481,17 @@ final class ChatViewModel {
         do {
             try await store.delete(sessionId: id)
             if selectedSessionId == id {
+                if let pending = pendingApproval {
+                    pendingApproval = nil
+                    pending.continuation.resume(returning: false)
+                }
+                generationTask?.cancel()
+                generationTask = nil
                 selectedSessionId = nil
                 session = nil
                 messages = []
+                currentMetadata = nil
+                lastTokenUsage = nil
             }
             await refreshSessions()
         } catch {
@@ -608,9 +679,36 @@ final class ChatViewModel {
     func selectDiscoveredModel(_ model: DiscoveredModel) async {
         modelId = model.id
         await fetchModelInfo(for: model.id)
+        // HTTP backend bakes the model ID at init time — rebuild it so the next
+        // generation uses the chosen model rather than the original default.
+        if backendType == .http {
+            rebuildHTTPBackend(model: model.id)
+        }
     }
 
     // MARK: - Private Helpers
+
+    private func rebuildHTTPBackend(model: String) {
+        guard let url = URL(string: httpURL) else { return }
+        let config = (try? SwiftClawConfig.load()) ?? .default
+        backend = HTTPBackend(
+            baseURL: url,
+            model: model,
+            apiKey: httpAPIKey.isEmpty ? nil : httpAPIKey,
+            cacheMode: config.cacheMode
+        )
+    }
+
+    private func buildBasePrompt(mode: SessionMode, sessionId: String, systemPromptOverride: String? = nil) async -> String {
+        let workspacePath: String? = mode == .build
+            ? await workspaceManager.path(for: sessionId).path : nil
+        return SystemPromptBuilder(
+            mode: mode,
+            workspacePath: workspacePath,
+            sessionId: sessionId,
+            systemPromptOverride: systemPromptOverride
+        ).build(enableTools: true)
+    }
 
     private func applySkills(config: SwiftClawConfig, tools: inout [any SwiftClawTool], prompt: inout String) async {
         guard config.skillsEnabled else { return }
@@ -661,7 +759,21 @@ final class ChatViewModel {
     }
 
     private func doSend(_ text: String) async {
-        guard let agentSession = session else { return }
+        guard let agentSession = session else {
+            // newChat must have failed (e.g., backend couldn't load). Show
+            // the user's message and a useful error rather than silently
+            // dropping the turn.
+            messages.append(ChatBubble(kind: .user(text)))
+            let why: String
+            if case let .error(msg) = backendState {
+                why = "Backend error: \(msg)"
+            } else {
+                why = "Couldn't start a session — check backend settings (Settings → General)."
+            }
+            messages.append(ChatBubble(kind: .warning(why)))
+            isGenerating = false
+            return
+        }
         isGenerating = true
         messages.append(ChatBubble(kind: .user(text)))
 
@@ -760,6 +872,16 @@ final class ChatViewModel {
                 case let .memoryUpdated(keys):
                     messages.append(ChatBubble(kind: .warning("Memory updated: \(keys.joined(separator: ", "))")))
 
+                case let .fileStreaming(path, partial):
+                    currentlyWritingFile = (path: path, partial: partial)
+                    if sessionMode == .build { canvasOpen = true }
+
+                case let .fileWritten(path):
+                    if currentlyWritingFile?.path == path {
+                        currentlyWritingFile = nil
+                    }
+                    canvasFileWrittenPath = path
+
                 case .done:
                     // Finalize any streaming bubble that never got a .turn (e.g. cancelled mid-stream)
                     if let id = streamingBubbleId,
@@ -777,8 +899,25 @@ final class ChatViewModel {
                     }
                 }
             }
+            // If we exited the loop via cancellation (Task.isCancelled break),
+            // the .done case never fires — finalize any half-rendered
+            // streaming bubble here so it doesn't render "forever streaming".
+            if Task.isCancelled, let id = streamingBubbleId,
+               let idx = messages.lastIndex(where: { $0.id == id })
+            {
+                if currentText.isEmpty, currentThinking == nil {
+                    messages.remove(at: idx)
+                } else {
+                    messages[idx] = ChatBubble(id: id, kind: .assistant(currentText))
+                }
+            }
             // Auto-save after each turn (skip if cancelled)
-            if !Task.isCancelled, let meta = currentMetadata {
+            if !Task.isCancelled, var meta = currentMetadata {
+                // Pick up live edits to mode / canvas before persisting.
+                meta.mode = sessionMode
+                meta.canvasSplit = canvasSplit
+                meta.updatedAt = Date()
+                currentMetadata = meta
                 try? await agentSession.save(to: store, metadata: meta)
                 await refreshSessions()
             }
